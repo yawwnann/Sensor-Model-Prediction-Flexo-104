@@ -1,0 +1,11 @@
+2025-10-22 00:44:14,493 - root - INFO - ==================================================
+2025-10-22 00:44:14,494 - root - INFO - FlexoTwin Logger initialized
+2025-10-22 00:44:14,494 - root - INFO - Log file: C:\Users\HP\Documents\Belajar python\Digital Twin\Sistem2\Backend\logs\flexotwin_2025-10-22.log
+2025-10-22 00:44:14,494 - root - INFO - ==================================================
+2025-10-22 00:44:14,499 - src.controllers.routes - INFO - All routes registered successfully
+2025-10-22 00:44:14,500 - src.controllers.routes - INFO - Error handlers registered successfully
+2025-10-22 00:44:14,546 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.1.23:5000
+2025-10-22 00:44:14,547 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
