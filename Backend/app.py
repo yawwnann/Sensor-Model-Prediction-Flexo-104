@@ -9,9 +9,11 @@ import sys
 import os
 import logging
 from flask import Flask, jsonify
+from flask_cors import CORS
 from src.utils.logger import get_logger, log_section, log_success, log_error, log_warning
 from src.services.mqtt_service import initialize_mqtt, get_mqtt_client
 from src.controllers.routes import register_routes
+from config import ALLOWED_ORIGINS
 
 
 # Hanya inisialisasi logger sekali (hindari duplikasi di Flask debug mode)
@@ -46,6 +48,12 @@ def create_app():
         log_section(logger, "INITIALIZING FLEXOTWIN BACKEND APPLICATION")
     
     app = Flask(__name__)
+    
+    # ========================================================================
+    # CONFIGURE CORS
+    # ========================================================================
+    CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGINS}})
+    log_success(logger, "CORS enabled for allowed origins")
     
     # ========================================================================
     # CONFIGURE FLASK DEBUG MODE LOGGING

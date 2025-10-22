@@ -1,0 +1,11 @@
+.venv
+.qodo
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyi
+
+node_modules/
+dist/
+.env
