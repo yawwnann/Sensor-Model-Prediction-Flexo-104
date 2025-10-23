@@ -86,7 +86,7 @@ class ColoredFormatter(logging.Formatter):
             # WARNING/ERROR/CRITICAL: lebih menonjol
             formatted = (
                 f"{ColorCodes.BRIGHT_YELLOW}[{timestamp}]{ColorCodes.RESET} "
-                f"{level_color}⚠ {record.levelname}{ColorCodes.RESET} "
+                f"{level_color}[{record.levelname}]{ColorCodes.RESET} "
                 f"{ColorCodes.BRIGHT_WHITE}{module_name}{ColorCodes.RESET} "
                 f"{record.getMessage()}"
             )
@@ -197,18 +197,18 @@ def log_section(logger, title, char='=', width=70):
 
 
 def log_success(logger, message):
-    """Log pesan sukses dengan simbol checkmark"""
-    logger.info(f"✓ {message}")
+    """Log pesan sukses dengan prefix SUCCESS"""
+    logger.info(f"[SUCCESS] {message}")
 
 
 def log_error(logger, message):
-    """Log pesan error dengan simbol X"""
-    logger.error(f"✗ {message}")
+    """Log pesan error dengan prefix ERROR"""
+    logger.error(f"[ERROR] {message}")
 
 
 def log_warning(logger, message):
-    """Log pesan warning dengan simbol warning"""
-    logger.warning(f"⚠ {message}")
+    """Log pesan warning dengan prefix WARNING"""
+    logger.warning(f"[WARNING] {message}")
 
 
 def log_info(logger, message):

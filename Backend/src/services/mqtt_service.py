@@ -65,14 +65,14 @@ def on_connect(client, userdata, flags, rc):
     """
     
     if rc == 0:
-        logger.info("✓ Successfully connected to MQTT Broker!")
-        logger.info(f"  Broker: {MQTT_BROKER}:{MQTT_PORT}")
+        logger.info("[MQTT] Successfully connected to MQTT Broker")
+        logger.info(f"[MQTT] Broker: {MQTT_BROKER}:{MQTT_PORT}")
         
         # Subscribe ke topic
         client.subscribe(MQTT_TOPIC)
-        logger.info(f"✓ Subscribed to topic: {MQTT_TOPIC}")
+        logger.info(f"[MQTT] Subscribed to topic: {MQTT_TOPIC}")
     else:
-        logger.error(f"✗ Failed to connect to MQTT Broker, return code {rc}")
+        logger.error(f"[MQTT] Failed to connect to MQTT Broker | Return code: {rc}")
 
 
 def on_disconnect(client, userdata, rc):
@@ -86,9 +86,9 @@ def on_disconnect(client, userdata, rc):
     """
     
     if rc != 0:
-        logger.warning(f"⚠ Unexpected disconnection from MQTT Broker (code: {rc})")
+        logger.warning(f"[MQTT] Unexpected disconnection from MQTT Broker | Code: {rc}")
     else:
-        logger.info("✓ Disconnected from MQTT Broker")
+        logger.info("[MQTT] Disconnected from MQTT Broker")
 
 
 def on_message(client, userdata, msg):
@@ -122,9 +122,9 @@ def on_message(client, userdata, msg):
         add_to_history(data)
         
     except json.JSONDecodeError as e:
-        logger.error(f"✗ Error decoding JSON from MQTT message: {e}")
+        logger.error(f"[MQTT] Error decoding JSON from MQTT message | {e}")
     except Exception as e:
-        logger.error(f"✗ Error processing MQTT message: {e}")
+        logger.error(f"[MQTT] Error processing MQTT message | {e}")
 
 
 def on_subscribe(client, userdata, mid, granted_qos):

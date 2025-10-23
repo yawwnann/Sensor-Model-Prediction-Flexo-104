@@ -158,73 +158,73 @@ class HealthService:
         # Rekomendasi berbasis mode kegagalan RPN tertinggi dari Tabel 4.5 FMEA
         # =====================================================================
         if health_index < 50:
-            logger.warning(f"🔴 CRITICAL condition for {component_name} (Health: {health_index})")
+            logger.warning(f"[CRITICAL] Component: {component_name} | Health: {health_index}%")
             
             if "feeder" in component_normalized and "pre" not in component_normalized:
                 # Komponen: Feeder
                 # Mode Kegagalan Prioritas: Keausan roller, masalah vakum
                 recommendations = [
-                    "🔧 URGENT: Periksa keausan roller feeder dan ganti jika perlu",
-                    "🔍 Inspeksi sistem vakum penarik lembaran (kebocoran, tekanan)",
-                    "⚙️ Validasi alignment roller feeder dengan plate cylinder",
-                    "🧹 Bersihkan sensor deteksi kertas dan area feeding",
-                    "📊 Monitor slip ratio dan feeding accuracy"
+                    "[URGENT] Periksa keausan roller feeder dan ganti jika perlu",
+                    "[INSPECT] Inspeksi sistem vakum penarik lembaran (kebocoran, tekanan)",
+                    "[ACTION] Validasi alignment roller feeder dengan plate cylinder",
+                    "[CLEAN] Bersihkan sensor deteksi kertas dan area feeding",
+                    "[MONITOR] Monitor slip ratio dan feeding accuracy"
                 ]
             
             elif "printing" in component_normalized:
                 # Komponen: Printing
                 # Mode Kegagalan Prioritas: Misalignment plate, tekanan tidak konsisten
                 recommendations = [
-                    "🔧 URGENT: Periksa alignment plate cylinder terhadap anilox roller",
-                    "🔍 Inspeksi konsistensi tekanan cetak pada semua warna",
-                    "⚙️ Kalibrasi ulang doctor blade untuk distribusi tinta merata",
-                    "🧹 Bersihkan anilox roller dari residu tinta kering",
-                    "📊 Verifikasi register mark accuracy dan adjust jika perlu",
-                    "🔩 Periksa bearing plate cylinder untuk keausan/play"
+                    "[URGENT] Periksa alignment plate cylinder terhadap anilox roller",
+                    "[INSPECT] Inspeksi konsistensi tekanan cetak pada semua warna",
+                    "[ACTION] Kalibrasi ulang doctor blade untuk distribusi tinta merata",
+                    "[CLEAN] Bersihkan anilox roller dari residu tinta kering",
+                    "[MONITOR] Verifikasi register mark accuracy dan adjust jika perlu",
+                    "[CHECK] Periksa bearing plate cylinder untuk keausan/play"
                 ]
             
             elif "pre" in component_normalized and "feeder" in component_normalized:
                 # Komponen: Pre-Feeder
                 # Mode Kegagalan Prioritas: Ketegangan belt, stopper tidak sejajar
                 recommendations = [
-                    "🔧 URGENT: Periksa dan adjust ketegangan belt conveyor",
-                    "🔍 Pastikan stopper penumpukan karton sejajar dan berfungsi",
-                    "⚙️ Inspeksi sensor deteksi tumpukan untuk akurasi",
-                    "🧹 Bersihkan area belt dari debu dan serpihan karton",
-                    "📊 Monitor waktu siklus feeding dan identifikasi bottleneck"
+                    "[URGENT] Periksa dan adjust ketegangan belt conveyor",
+                    "[INSPECT] Pastikan stopper penumpukan karton sejajar dan berfungsi",
+                    "[ACTION] Inspeksi sensor deteksi tumpukan untuk akurasi",
+                    "[CLEAN] Bersihkan area belt dari debu dan serpihan karton",
+                    "[MONITOR] Monitor waktu siklus feeding dan identifikasi bottleneck"
                 ]
             
             elif "slotter" in component_normalized:
                 # Komponen: Slotter
                 # Mode Kegagalan Prioritas: Ketajaman pisau, keausan roller creasing
                 recommendations = [
-                    "🔧 URGENT: Periksa ketajaman pisau slotter dan ganti jika tumpul",
-                    "🔍 Inspeksi keausan roller creasing untuk crack/deformasi",
-                    "⚙️ Validasi setting jarak antar roller (slotting & creasing)",
-                    "🧹 Bersihkan serbuk kertas dari area pisau dan roller",
-                    "📊 Ukur kedalaman slot dan ketajaman lipatan (quality check)",
-                    "🔩 Periksa sistem pneumatik untuk tekanan optimal"
+                    "[URGENT] Periksa ketajaman pisau slotter dan ganti jika tumpul",   
+                    "[INSPECT] Inspeksi keausan roller creasing untuk crack/deformasi",
+                    "[ACTION] Validasi setting jarak antar roller (slotting & creasing)",
+                    "[CLEAN] Bersihkan serbuk kertas dari area pisau dan roller",
+                    "[MONITOR] Ukur kedalaman slot dan ketajaman lipatan (quality check)",
+                    "[CHECK] Periksa sistem pneumatik untuk tekanan optimal"
                 ]
             
             elif "stacker" in component_normalized:
                 # Komponen: Stacker
                 # Mode Kegagalan Prioritas: Sensor penghitung kotor, belt kendor
                 recommendations = [
-                    "🔧 URGENT: Bersihkan sensor penghitung tumpukan dari debu",
-                    "🔍 Periksa ketegangan belt conveyor stacker dan adjust",
-                    "⚙️ Inspeksi mekanisme penumpukan untuk alignment",
-                    "🧹 Bersihkan area stacker dari serpihan dan kotoran",
-                    "📊 Verifikasi akurasi counting dan sesuaikan sensitivity sensor"
+                    "[URGENT] Bersihkan sensor penghitung tumpukan dari debu",
+                    "[INSPECT] Periksa ketegangan belt conveyor stacker dan adjust",
+                    "[ACTION] Inspeksi mekanisme penumpukan untuk alignment",
+                    "[CLEAN] Bersihkan area stacker dari serpihan dan kotoran",
+                    "[MONITOR] Verifikasi akurasi counting dan sesuaikan sensitivity sensor"
                 ]
             
             else:
                 # Komponen tidak dikenali atau komponen umum
                 recommendations = [
-                    "🔧 URGENT: Lakukan inspeksi menyeluruh komponen",
-                    "🔍 Identifikasi mode kegagalan dengan analisis FMEA",
-                    "⚙️ Periksa komponen mekanis untuk keausan/kerusakan",
-                    "📊 Review log operasional untuk pola kegagalan",
-                    "🛠️ Konsultasi dengan maintenance engineer untuk root cause analysis"
+                    "[URGENT] Lakukan inspeksi menyeluruh komponen",
+                    "[INSPECT] Identifikasi mode kegagalan dengan analisis FMEA",
+                    "[ACTION] Periksa komponen mekanis untuk keausan/kerusakan",
+                    "[MONITOR] Review log operasional untuk pola kegagalan",
+                    "[CONSULT] Konsultasi dengan maintenance engineer untuk root cause analysis"
                 ]
         
         # =====================================================================
@@ -232,39 +232,39 @@ class HealthService:
         # Rekomendasi preventive maintenance dan monitoring intensif
         # =====================================================================
         elif 50 <= health_index < 70:
-            logger.warning(f"⚠️ WARNING condition for {component_name} (Health: {health_index})")
+            logger.warning(f"[WARNING] Component: {component_name} | Health: {health_index}%")
             
             recommendations = [
-                f"📋 Tingkatkan frekuensi monitoring untuk komponen {component_name}",
-                "🔍 Lakukan inspeksi preventive maintenance dalam 24-48 jam",
-                "📊 Analisis tren performa untuk deteksi early warning signs",
-                "🛠️ Siapkan spare parts kritis untuk antisipasi kegagalan",
-                "📝 Dokumentasikan anomali yang terdeteksi untuk analisis RCA"
+                f"[MONITOR] Tingkatkan frekuensi monitoring untuk komponen {component_name}",
+                "[INSPECT] Lakukan inspeksi preventive maintenance dalam 24-48 jam",
+                "[ANALYZE] Analisis tren performa untuk deteksi early warning signs",
+                "[PREPARE] Siapkan spare parts kritis untuk antisipasi kegagalan",
+                "[DOCUMENT] Dokumentasikan anomali yang terdeteksi untuk analisis RCA"
             ]
             
             # Tambahan rekomendasi spesifik berdasarkan komponen
             if "feeder" in component_normalized:
-                recommendations.append("⚙️ Periksa kondisi roller dan belt feeder")
+                recommendations.append("[CHECK] Periksa kondisi roller dan belt feeder")
             elif "printing" in component_normalized:
-                recommendations.append("⚙️ Monitor konsistensi kualitas cetak dan register")
+                recommendations.append("[CHECK] Monitor konsistensi kualitas cetak dan register")
             elif "slotter" in component_normalized:
-                recommendations.append("⚙️ Evaluasi ketajaman pisau dan kondisi roller")
+                recommendations.append("[CHECK] Evaluasi ketajaman pisau dan kondisi roller")
             elif "stacker" in component_normalized:
-                recommendations.append("⚙️ Cek akurasi sensor dan mekanisme penumpukan")
+                recommendations.append("[CHECK] Cek akurasi sensor dan mekanisme penumpukan")
         
         # =====================================================================
         # KONDISI BAIK (Health Index >= 70)
         # Rekomendasi monitoring rutin dan preventive maintenance standar
         # =====================================================================
         else:
-            logger.info(f"✅ GOOD condition for {component_name} (Health: {health_index})")
+            logger.info(f"[GOOD] Component: {component_name} | Health: {health_index}%")
             
             recommendations = [
-                "✅ Kondisi komponen dalam keadaan baik",
-                "📅 Lakukan monitoring rutin sesuai jadwal preventive maintenance",
-                "📊 Catat performa baseline untuk referensi future analysis",
-                "🔧 Lanjutkan lubrication dan cleaning sesuai SOP",
-                "📝 Review historical data untuk optimasi maintenance schedule"
+                "[STATUS] Kondisi komponen dalam keadaan baik",
+                "[SCHEDULE] Lakukan monitoring rutin sesuai jadwal preventive maintenance",
+                "[BASELINE] Catat performa baseline untuk referensi future analysis",
+                "[MAINTAIN] Lanjutkan lubrication dan cleaning sesuai SOP",
+                "[REVIEW] Review historical data untuk optimasi maintenance schedule"
             ]
         
         return recommendations
@@ -309,7 +309,7 @@ class HealthService:
         
         if final_health_index < CRITICAL_THRESHOLD:
             logger.warning(
-                f"⚠️ CRITICAL HEALTH DETECTED! Health Index: {final_health_index} < {CRITICAL_THRESHOLD}"
+                f"[CRITICAL] Health Index: {final_health_index}% < {CRITICAL_THRESHOLD}% | Auto-trigger activated"
             )
             
             try:
@@ -319,7 +319,7 @@ class HealthService:
                 # ===================================================================
                 # MENGGUNAKAN DATA KUMULATIF REAL-TIME DARI DATABASE
                 # ===================================================================
-                logger.info("📊 Fetching real-time cumulative production data from database...")
+                logger.info("[DATA] Fetching real-time cumulative production data from database...")
                 
                 latest_status = db_service.get_latest_machine_status()
                 
@@ -329,19 +329,19 @@ class HealthService:
                     produk_cacat = latest_status.get("cumulative_defects", 0)
                     
                     logger.info(
-                        f"✅ Using REAL cumulative data from simulator: "
-                        f"Production={total_produksi} pcs, Defects={produk_cacat} pcs"
+                        f"[SUCCESS] Using REAL cumulative data from simulator | "
+                        f"Production: {total_produksi} pcs | Defects: {produk_cacat} pcs"
                     )
                     
                     # Validasi data: jika production = 0, gunakan nilai minimal
                     if total_produksi == 0:
-                        logger.warning("⚠️ Cumulative production is 0 (shift just started or machine idle)")
+                        logger.warning("[WARNING] Cumulative production is 0 (shift just started or machine idle)")
                         total_produksi = 100  # Minimal untuk prediksi
                         produk_cacat = 5
                         logger.info(f"Using minimal values for prediction: Production={total_produksi}, Defects={produk_cacat}")
                 else:
                     # Fallback: data kumulatif belum tersedia (database belum ada cumulative columns)
-                    logger.warning("⚠️ Cumulative data not available in database. Using fallback defaults.")
+                    logger.warning("[WARNING] Cumulative data not available in database. Using fallback defaults.")
                     total_produksi = 4000
                     produk_cacat = 150
                 
@@ -350,7 +350,7 @@ class HealthService:
                     "produk_cacat": produk_cacat
                 }
                 
-                logger.info(f"🤖 Auto-triggering maintenance prediction with input: {input_data}")
+                logger.info(f"[AUTO-TRIGGER] Initiating maintenance prediction with input: {input_data}")
                 
                 # Panggil fungsi prediksi
                 prediction_result = prediction_service.predict_maintenance_duration(input_data)
@@ -359,7 +359,7 @@ class HealthService:
                 # Log hasil prediksi
                 if prediction_result.get('success'):
                     logger.warning(
-                        f"✅ AUTO-PREDICTION COMPLETED | "
+                        f"[SUCCESS] AUTO-PREDICTION COMPLETED | "
                         f"Health Index: {final_health_index} | "
                         f"Predicted Maintenance Duration: {prediction_result.get('prediction_formatted', 'N/A')} | "
                         f"Input: Total Produksi={total_produksi}, Produk Cacat={produk_cacat} | "
@@ -367,14 +367,14 @@ class HealthService:
                     )
                 else:
                     logger.error(
-                        f"❌ AUTO-PREDICTION FAILED | "
+                        f"[FAILED] AUTO-PREDICTION FAILED | "
                         f"Health Index: {final_health_index} | "
                         f"Error: {prediction_result.get('message', 'Unknown error')}"
                     )
                 
             except Exception as e:
                 logger.error(
-                    f"❌ ERROR during auto-trigger prediction | "
+                    f"[ERROR] Exception during auto-trigger prediction | "
                     f"Health Index: {final_health_index} | "
                     f"Exception: {str(e)}"
                 )

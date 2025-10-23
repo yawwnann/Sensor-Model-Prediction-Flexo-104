@@ -75,7 +75,7 @@ def get_component_health(component_name: str):
     Returns:
         JSON response dengan health metrics komponen
     """
-    logger.info(f"📊 Health check requested for: {component_name}")
+    logger.info(f"[REQUEST] Health check requested for: {component_name}")
     
     try:
         # Ambil data RPN dari database
@@ -97,7 +97,7 @@ def get_component_health(component_name: str):
         health_data = health_service.calculate_component_health(component_name, rpn_value, rpn_max)
         
         # Log metrics dengan format yang rapi
-        logger.info(f"✓ Health metrics calculated for {component_name}:")
+        logger.info(f"[CALCULATED] Health metrics calculated for {component_name}:")
         log_metric(logger, "RPN Score", f"{health_data['rpn_score']:.2f}", "%")
         log_metric(logger, "OEE Score", f"{health_data['oee_score']:.2f}", "%")
         log_metric(logger, "Health Index", f"{health_data['final_health_index']:.2f}", "%")
