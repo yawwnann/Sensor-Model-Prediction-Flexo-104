@@ -42,8 +42,8 @@ const TrendChart = ({ healthHistory, timestamps }) => {
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white p-3 border-2 border-gray-300 rounded-lg shadow-lg">
-          <p className="font-semibold text-gray-800 mb-2">{label}</p>
+        <div className="bg-white p-3 border border-slate-300 rounded-lg shadow-sm">
+          <p className="font-semibold text-slate-800 mb-2">{label}</p>
           {payload.map((entry, index) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
               {entry.name}: {entry.value?.toFixed(2)}%
@@ -56,10 +56,10 @@ const TrendChart = ({ healthHistory, timestamps }) => {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 border-2 border-gray-200">
+    <div className="bg-white rounded-lg shadow-sm p-6 border border-slate-200">
       <div className="flex items-center gap-2 mb-4">
-        <TrendingUp className="w-5 h-5 text-indigo-600" />
-        <h3 className="text-lg font-semibold text-gray-800">
+        <TrendingUp className="w-5 h-5 text-blue-600" />
+        <h3 className="text-lg font-semibold text-slate-800">
           Health Index Trend (Last {chartData.length} Points)
         </h3>
       </div>
@@ -114,26 +114,26 @@ const TrendChart = ({ healthHistory, timestamps }) => {
           return (
             <div
               key={component}
-              className="bg-gray-50 rounded-lg p-3 border border-gray-200"
+              className="bg-slate-50 rounded-lg p-3 border border-slate-200"
             >
-              <p className="text-xs text-gray-600 mb-1">{component}</p>
-              <p className="text-lg font-bold text-gray-800">
+              <p className="text-xs text-slate-600 mb-1">{component}</p>
+              <p className="text-lg font-bold text-slate-800">
                 {latestValue.toFixed(1)}%
               </p>
               <div className="flex items-center gap-2 mt-1">
                 <span
                   className={`text-xs font-semibold ${
                     trend > 0
-                      ? "text-green-600"
+                      ? "text-emerald-600"
                       : trend < 0
                       ? "text-red-600"
-                      : "text-gray-600"
+                      : "text-slate-600"
                   }`}
                 >
                   {trend > 0 ? "↑" : trend < 0 ? "↓" : "→"}{" "}
                   {Math.abs(trend).toFixed(1)}
                 </span>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-slate-500">
                   Avg: {avgValue.toFixed(1)}%
                 </span>
               </div>

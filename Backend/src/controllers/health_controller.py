@@ -93,8 +93,8 @@ def get_component_health(component_name: str):
                 ]
             }), 404
         
-        # Hitung health metrics
-        health_data = health_service.calculate_component_health(rpn_value, rpn_max)
+        # Hitung health metrics dengan nama komponen
+        health_data = health_service.calculate_component_health(component_name, rpn_value, rpn_max)
         
         # Log metrics dengan format yang rapi
         logger.info(f"✓ Health metrics calculated for {component_name}:")
@@ -102,6 +102,7 @@ def get_component_health(component_name: str):
         log_metric(logger, "OEE Score", f"{health_data['oee_score']:.2f}", "%")
         log_metric(logger, "Health Index", f"{health_data['final_health_index']:.2f}", "%")
         log_metric(logger, "Status", health_data['status'])
+        log_metric(logger, "Recommendations", f"{len(health_data['recommendations'])} items")
         
         # Format response
         response = {
@@ -110,6 +111,7 @@ def get_component_health(component_name: str):
             "status": health_data["status"],
             "color": health_service.get_health_color(health_data["final_health_index"]),
             "description": health_service.get_health_description(health_data["final_health_index"]),
+            "recommendations": health_data["recommendations"],  # Rekomendasi berbasis FMEA
             "metrics": {
                 "rpn_score": health_data["rpn_score"],
                 "oee_score": health_data["oee_score"],
@@ -127,6 +129,11 @@ def get_component_health(component_name: str):
                 }
             }
         }
+        
+        # Tambahkan informasi auto-prediction jika tersedia
+        if "auto_prediction" in health_data:
+            response["auto_prediction"] = health_data["auto_prediction"]
+            logger.warning(f" Auto-prediction included in response for {component_name}")
         
         return jsonify(response), 200
         

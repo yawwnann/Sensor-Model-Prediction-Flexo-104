@@ -213,11 +213,21 @@ class DatabaseService:
             return False
 
     def log_machine_status(self, data):
-        """Menyimpan log status mesin dari MQTT ke database."""
+        """
+        Menyimpan log status mesin dari MQTT ke database.
+        Includes cumulative production and defects data.
+        """
         insert_sql = (
             """
-            INSERT INTO machine_logs (timestamp, machine_status, performance_rate, quality_rate)
-            VALUES (%s, %s, %s, %s);
+            INSERT INTO machine_logs (
+                timestamp, 
+                machine_status, 
+                performance_rate, 
+                quality_rate,
+                cumulative_production,
+                cumulative_defects
+            )
+            VALUES (%s, %s, %s, %s, %s, %s);
             """
         )
         try:
@@ -230,26 +240,36 @@ class DatabaseService:
                             data.get('machine_status'),
                             data.get('performance_rate'),
                             data.get('quality_rate'),
+                            data.get('cumulative_production', 0),  # Default 0 if not present
+                            data.get('cumulative_defects', 0),     # Default 0 if not present
                         ),
                     )
                 conn.commit()
-            logger.info("Machine status logged to database")
+            logger.info(f"Machine status logged: Production={data.get('cumulative_production', 0)}, Defects={data.get('cumulative_defects', 0)}")
         except Exception as e:
             logger.error(f"Database error while logging machine status: {e}")
 
     def get_latest_machine_status(self) -> Optional[Dict[str, Any]]:
         """
         Mengambil status mesin terbaru dari database.
+        Includes cumulative production and defects data.
         
         Returns:
-            Dict dengan keys: timestamp, machine_status, performance_rate, quality_rate
+            Dict dengan keys: timestamp, machine_status, performance_rate, quality_rate,
+            cumulative_production, cumulative_defects
             atau None jika tidak ada data
         """
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     query = """
-                        SELECT timestamp, machine_status, performance_rate, quality_rate
+                        SELECT 
+                            timestamp, 
+                            machine_status, 
+                            performance_rate, 
+                            quality_rate,
+                            cumulative_production,
+                            cumulative_defects
                         FROM machine_logs
                         ORDER BY timestamp DESC
                         LIMIT 1
@@ -265,10 +285,12 @@ class DatabaseService:
                         "timestamp": result[0],
                         "machine_status": result[1],
                         "performance_rate": result[2],
-                        "quality_rate": result[3]
+                        "quality_rate": result[3],
+                        "cumulative_production": result[4] if result[4] is not None else 0,
+                        "cumulative_defects": result[5] if result[5] is not None else 0
                     }
                     
-                    logger.info(f"Latest machine status retrieved: {data}")
+                    logger.info(f"Latest machine status: Status={data['machine_status']}, Production={data['cumulative_production']}, Defects={data['cumulative_defects']}")
                     return data
                     
         except OperationalError as e:
@@ -276,6 +298,54 @@ class DatabaseService:
             return None
         except Exception as e:
             logger.error(f"Error retrieving latest machine status: {e}")
+            return None
+
+    def get_recent_machine_logs(self, limit: int = 100) -> Optional[List[Dict[str, Any]]]:
+        """
+        Mengambil sejumlah log mesin terbaru dari database.
+        Digunakan untuk menghitung Availability berdasarkan histori status.
+        
+        Args:
+            limit: Jumlah log yang diambil (default 100)
+            
+        Returns:
+            List of Dict dengan keys: timestamp, machine_status, performance_rate, quality_rate
+            atau None jika tidak ada data
+        """
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    query = """
+                        SELECT timestamp, machine_status, performance_rate, quality_rate
+                        FROM machine_logs
+                        ORDER BY timestamp DESC
+                        LIMIT %s
+                    """
+                    cursor.execute(query, (limit,))
+                    results = cursor.fetchall()
+                    
+                    if not results:
+                        logger.warning("No machine logs found in database")
+                        return None
+                    
+                    # Convert to list of dicts
+                    logs = []
+                    for row in results:
+                        logs.append({
+                            "timestamp": row[0],
+                            "machine_status": row[1],
+                            "performance_rate": row[2],
+                            "quality_rate": row[3]
+                        })
+                    
+                    logger.info(f"Retrieved {len(logs)} machine logs from database")
+                    return logs
+                    
+        except OperationalError as e:
+            logger.error(f"Database connection error: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error retrieving machine logs: {e}")
             return None
 
 

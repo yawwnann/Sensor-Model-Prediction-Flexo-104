@@ -38,6 +38,8 @@ latest_sensor_data = {
     "machine_status": None,
     "performance_rate": None,
     "quality_rate": None,
+    "cumulative_production": 0,
+    "cumulative_defects": 0,
     "timestamp": None,
     "simulator_version": None
 }
@@ -109,6 +111,8 @@ def on_message(client, userdata, msg):
         logger.info(f"  Status: {data.get('machine_status')}")
         logger.info(f"  Performance: {data.get('performance_rate')}%")
         logger.info(f"  Quality: {data.get('quality_rate')}%")
+        logger.info(f"  Cumulative Production: {data.get('cumulative_production', 0)} pcs")
+        logger.info(f"  Cumulative Defects: {data.get('cumulative_defects', 0)} pcs")
         
         # Persist to database for real-time computations
         db_service.log_machine_status(data)
@@ -156,6 +160,8 @@ def update_latest_sensor_data(data):
         "machine_status": data.get("machine_status"),
         "performance_rate": data.get("performance_rate"),
         "quality_rate": data.get("quality_rate"),
+        "cumulative_production": data.get("cumulative_production", 0),
+        "cumulative_defects": data.get("cumulative_defects", 0),
         "timestamp": data.get("timestamp"),
         "simulator_version": data.get("simulator_version")
     }
@@ -237,6 +243,7 @@ class MQTTClient:
         self.client.on_subscribe = on_subscribe
         
         self.is_connected = False
+        self.is_stopping = False
         logger.debug("MQTT Client initialized")
     
     def start(self):
@@ -268,14 +275,32 @@ class MQTTClient:
         Menghentikan koneksi MQTT client.
         """
         
+        if self.is_stopping:
+            return
+            
+        self.is_stopping = True
+        
         try:
             logger.info("[MQTT] Stopping client...")
+            
+            # Stop the network loop first
             self.client.loop_stop()
-            self.client.disconnect()
+            
+            # Then disconnect
+            if self.is_connected:
+                self.client.disconnect()
+            
+            # Wait for clean disconnect
+            time.sleep(0.3)
+            
             self.is_connected = False
-            logger.info("[MQTT] Client stopped")
+            logger.info("[MQTT] Client stopped cleanly")
+            
         except Exception as e:
             logger.error(f"[MQTT] Error stopping client: {e}")
+            self.is_connected = False
+        finally:
+            self.is_stopping = False
     
     def is_connected_to_broker(self):
         """

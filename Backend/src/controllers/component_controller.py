@@ -106,8 +106,8 @@ def get_component_detailed_health(component_name: str):
                 "suggestion": "Gunakan GET /api/components untuk melihat daftar komponen yang tersedia"
             }), 404
         
-        # Hitung health metrics
-        health_data = health_service.calculate_component_health(rpn_value, rpn_max)
+        # Hitung health metrics dengan nama komponen
+        health_data = health_service.calculate_component_health(component_name, rpn_value, rpn_max)
         
         # Format response dengan detail lengkap
         response = {
@@ -146,11 +146,15 @@ def get_component_detailed_health(component_name: str):
                     "oee_weight": "60% - Faktor efisiensi operasional"
                 }
             },
-            "recommendations": health_service.get_recommendations(health_data["final_health_index"]),
+            "recommendations": {
+                "fmea_based": health_data["recommendations"],  # Rekomendasi spesifik berbasis FMEA
+                "general": health_service.get_recommendations(health_data["final_health_index"])  # Rekomendasi umum
+            },
             "metadata": {
                 "calculation_timestamp": health_service.get_current_timestamp(),
                 "data_source": "Real-time database + simulated OEE",
-                "refresh_interval": "Real-time (setiap request)"
+                "refresh_interval": "Real-time (setiap request)",
+                "recommendation_method": "Rule-based FMEA & Fishbone Analysis"
             }
         }
         

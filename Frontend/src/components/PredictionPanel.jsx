@@ -33,22 +33,22 @@ const PredictionPanel = () => {
   };
 
   const getPredictionColor = (minutes) => {
-    if (minutes < 30) return "text-green-600";
-    if (minutes < 60) return "text-yellow-600";
+    if (minutes < 30) return "text-emerald-600";
+    if (minutes < 60) return "text-amber-600";
     return "text-red-600";
   };
 
   const getPredictionBgColor = (minutes) => {
-    if (minutes < 30) return "bg-green-50 border-green-300";
-    if (minutes < 60) return "bg-yellow-50 border-yellow-300";
-    return "bg-red-50 border-red-300";
+    if (minutes < 30) return "bg-green-50 border-green-200";
+    if (minutes < 60) return "bg-amber-50 border-amber-200";
+    return "bg-red-50 border-red-200";
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6 border-2 border-indigo-300">
+    <div className="bg-white rounded-lg shadow-sm p-6 border border-slate-200">
       <div className="flex items-center gap-2 mb-4">
-        <Brain className="w-6 h-6 text-indigo-600" />
-        <h2 className="text-xl font-bold text-gray-800">
+        <Brain className="w-6 h-6 text-blue-600" />
+        <h2 className="text-xl font-bold text-slate-800">
           Prediksi Maintenance
         </h2>
       </div>
@@ -56,14 +56,14 @@ const PredictionPanel = () => {
       <div className="space-y-4">
         {/* Input Total Produksi */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            📦 Total Produksi (Pcs)
+          <label className="block text-sm font-medium text-slate-700 mb-2">
+            Total Produksi (Pcs)
           </label>
           <input
             type="number"
             value={totalProduksi}
             onChange={(e) => setTotalProduksi(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             min="0"
             step="100"
           />
@@ -71,14 +71,14 @@ const PredictionPanel = () => {
 
         {/* Input Produk Cacat */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            ❌ Produk Cacat (Pcs)
+          <label className="block text-sm font-medium text-slate-700 mb-2">
+            Produk Cacat (Pcs)
           </label>
           <input
             type="number"
             value={produkCacat}
             onChange={(e) => setProdukCacat(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             min="0"
             step="10"
           />
@@ -88,7 +88,7 @@ const PredictionPanel = () => {
         <button
           onClick={handlePredict}
           disabled={isLoading}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isLoading ? (
             <>
@@ -105,11 +105,11 @@ const PredictionPanel = () => {
 
         {/* Error Message */}
         {error && (
-          <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 flex items-start gap-2">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-2">
             <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-red-800">Error</p>
-              <p className="text-sm text-red-600">{error}</p>
+              <p className="font-semibold text-red-600">Error</p>
+              <p className="text-sm text-slate-600">{error}</p>
             </div>
           </div>
         )}
@@ -117,7 +117,7 @@ const PredictionPanel = () => {
         {/* Prediction Result */}
         {prediction && (
           <div
-            className={`border-2 rounded-lg p-4 ${getPredictionBgColor(
+            className={`border rounded-lg p-4 ${getPredictionBgColor(
               prediction.prediction
             )}`}
           >
@@ -128,7 +128,7 @@ const PredictionPanel = () => {
                 )}`}
               />
               <div className="flex-1">
-                <p className="font-semibold text-gray-800 mb-1">
+                <p className="font-semibold text-slate-800 mb-1">
                   Hasil Prediksi
                 </p>
                 <p
@@ -142,18 +142,18 @@ const PredictionPanel = () => {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-gray-300">
-              <p className="text-xs text-gray-600">Input Data:</p>
+            <div className="pt-3 border-t border-slate-200">
+              <p className="text-xs text-slate-600 font-medium">Input Data:</p>
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <div>
-                  <p className="text-xs text-gray-500">Total Produksi</p>
-                  <p className="text-sm font-semibold">
+                  <p className="text-xs text-slate-500">Total Produksi</p>
+                  <p className="text-sm font-semibold text-slate-800">
                     {prediction.input?.total_produksi?.toLocaleString()} pcs
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Produk Cacat</p>
-                  <p className="text-sm font-semibold">
+                  <p className="text-xs text-slate-500">Produk Cacat</p>
+                  <p className="text-sm font-semibold text-slate-800">
                     {prediction.input?.produk_cacat?.toLocaleString()} pcs
                   </p>
                 </div>
@@ -161,11 +161,11 @@ const PredictionPanel = () => {
             </div>
 
             {/* Recommendation */}
-            <div className="mt-3 p-2 bg-white rounded">
-              <p className="text-xs font-semibold text-gray-700 mb-1">
-                💡 Rekomendasi:
+            <div className="mt-3 p-3 bg-white rounded border border-slate-200">
+              <p className="text-xs font-semibold text-slate-700 mb-1">
+                Rekomendasi:
               </p>
-              <p className="text-xs text-gray-600">
+              <p className="text-xs text-slate-600">
                 {prediction.prediction < 30
                   ? "Kondisi optimal. Lanjutkan monitoring rutin."
                   : prediction.prediction < 60

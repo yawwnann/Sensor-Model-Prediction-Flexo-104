@@ -56,8 +56,8 @@ const OEEChart = ({ componentsData, oeeHistory }) => {
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white p-3 border-2 border-gray-300 rounded-lg shadow-lg">
-          <p className="font-semibold text-gray-800 mb-2">{label}</p>
+        <div className="bg-white p-3 border border-slate-300 rounded-lg shadow-sm">
+          <p className="font-semibold text-slate-800 mb-2">{label}</p>
           {payload.map((entry, index) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
               {entry.name}: {entry.value.toFixed(2)}%
@@ -76,36 +76,32 @@ const OEEChart = ({ componentsData, oeeHistory }) => {
         <OEECard
           title="Overall OEE"
           value={overallOEE}
-          icon="📊"
-          color="bg-blue-50 border-blue-300 text-blue-800"
+          color="bg-blue-50 border-blue-200 text-blue-600"
         />
         <OEECard
           title="Availability"
           value={overallAvailability}
-          icon="⏱️"
-          color="bg-green-50 border-green-300 text-green-800"
+          color="bg-emerald-50 border-emerald-200 text-emerald-600"
         />
         <OEECard
           title="Performance"
           value={overallPerformance}
-          icon="⚡"
-          color="bg-yellow-50 border-yellow-300 text-yellow-800"
+          color="bg-amber-50 border-amber-200 text-amber-600"
         />
         <OEECard
           title="Quality"
           value={overallQuality}
-          icon="✅"
-          color="bg-purple-50 border-purple-300 text-purple-800"
+          color="bg-purple-50 border-purple-200 text-purple-600"
         />
       </div>
 
       {/* OEE Formula */}
-      <div className="bg-indigo-50 border-2 border-indigo-300 rounded-lg p-4">
-        <h3 className="font-semibold text-indigo-900 mb-2">📐 OEE Formula</h3>
-        <p className="text-sm text-indigo-800">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h3 className="font-semibold text-slate-800 mb-2">OEE Formula</h3>
+        <p className="text-sm text-slate-700">
           OEE = Availability × Performance × Quality
         </p>
-        <p className="text-xs text-indigo-700 mt-1">
+        <p className="text-xs text-slate-600 mt-1">
           Overall OEE: {overallOEE.toFixed(2)}% ={" "}
           {overallAvailability.toFixed(2)}% × {overallPerformance.toFixed(2)}% ×{" "}
           {overallQuality.toFixed(2)}%
@@ -113,10 +109,10 @@ const OEEChart = ({ componentsData, oeeHistory }) => {
       </div>
 
       {/* Bar Chart - OEE Components by Machine Component */}
-      <div className="bg-white rounded-lg shadow-md p-6 border-2 border-gray-200">
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-slate-200">
         <div className="flex items-center gap-2 mb-4">
-          <BarChart3 className="w-5 h-5 text-indigo-600" />
-          <h3 className="text-lg font-semibold text-gray-800">
+          <BarChart3 className="w-5 h-5 text-blue-600" />
+          <h3 className="text-lg font-semibold text-slate-800">
             OEE Components by Machine Component
           </h3>
         </div>
@@ -150,10 +146,10 @@ const OEEChart = ({ componentsData, oeeHistory }) => {
 
       {/* Line Chart - OEE Trend */}
       {lineChartData.length > 0 && (
-        <div className="bg-white rounded-lg shadow-md p-6 border-2 border-gray-200">
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-slate-200">
           <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-lg font-semibold text-gray-800">
+            <TrendingUp className="w-5 h-5 text-blue-600" />
+            <h3 className="text-lg font-semibold text-slate-800">
               OEE Trend Over Time (Last {lineChartData.length} Points)
             </h3>
           </div>
@@ -214,35 +210,35 @@ const OEEChart = ({ componentsData, oeeHistory }) => {
 
       {/* OEE Analysis */}
       <div
-        className={`border-2 rounded-lg p-4 ${
+        className={`border rounded-lg p-4 ${
           overallOEE >= 85
-            ? "bg-green-50 border-green-300"
+            ? "bg-emerald-50 border-emerald-200"
             : overallOEE >= 70
-            ? "bg-yellow-50 border-yellow-300"
-            : "bg-red-50 border-red-300"
+            ? "bg-amber-50 border-amber-200"
+            : "bg-red-50 border-red-200"
         }`}
       >
-        <h3 className="font-semibold text-gray-800 mb-2">
-          📊 OEE Analysis & Recommendations
+        <h3 className="font-semibold text-slate-800 mb-2">
+          OEE Analysis & Recommendations
         </h3>
-        <p className="text-sm text-gray-700 mb-2">
+        <p className="text-sm text-slate-700 mb-2">
           Current OEE: <strong>{overallOEE.toFixed(2)}%</strong>
         </p>
-        <p className="text-sm text-gray-700">
+        <p className="text-sm text-slate-700">
           {overallOEE >= 85
-            ? "✅ Excellent! OEE is above world-class standard (85%). Continue monitoring and maintain current practices."
+            ? "Excellent! OEE is above world-class standard (85%). Continue monitoring and maintain current practices."
             : overallOEE >= 70
-            ? "⚠️ Good performance but there is room for improvement. Target is 85% or higher."
-            : "🚨 OEE is below acceptable levels. Immediate action required to improve efficiency."}
+            ? "Good performance but there is room for improvement. Target is 85% or higher."
+            : "OEE is below acceptable levels. Immediate action required to improve efficiency."}
         </p>
 
         {/* Recommendations based on lowest component */}
         {overallOEE < 85 && (
-          <div className="mt-3 pt-3 border-t border-gray-300">
-            <p className="text-xs font-semibold text-gray-800 mb-1">
-              💡 Focus Areas:
+          <div className="mt-3 pt-3 border-t border-slate-200">
+            <p className="text-xs font-semibold text-slate-800 mb-1">
+              Focus Areas:
             </p>
-            <ul className="text-xs text-gray-700 space-y-1">
+            <ul className="text-xs text-slate-700 space-y-1">
               {overallAvailability <
                 Math.min(overallPerformance, overallQuality) && (
                 <li>
@@ -279,15 +275,10 @@ const OEEChart = ({ componentsData, oeeHistory }) => {
 };
 
 // OEE Card Component
-const OEECard = ({ title, value, icon, color }) => (
-  <div className={`${color} border-2 rounded-lg p-4 shadow-md`}>
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-sm font-medium opacity-80 mb-1">{title}</p>
-        <p className="text-2xl font-bold">{value.toFixed(2)}%</p>
-      </div>
-      <span className="text-3xl">{icon}</span>
-    </div>
+const OEECard = ({ title, value, color }) => (
+  <div className={`${color} border rounded-lg p-4`}>
+    <p className="text-sm font-medium mb-1">{title}</p>
+    <p className="text-2xl font-bold">{value.toFixed(2)}%</p>
   </div>
 );
 

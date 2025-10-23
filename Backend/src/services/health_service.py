@@ -12,13 +12,30 @@ from src.services.database_service import db_service
 
 logger = get_logger(__name__)
 
+# Threshold kritis untuk pemicu otomatis prediksi maintenance
+CRITICAL_THRESHOLD = 40.0
+
 
 class HealthService:
     """Service untuk kalkulasi dan manajemen health metrics komponen."""
     
     def __init__(self):
         """Initialize health service."""
+        # Lazy import untuk menghindari circular dependency
+        self._prediction_service = None
         logger.info("HealthService initialized")
+    
+    def _get_prediction_service(self):
+        """
+        Lazy loading untuk PredictionService untuk menghindari circular import.
+        
+        Returns:
+            Instance dari PredictionService
+        """
+        if self._prediction_service is None:
+            from src.services.prediction_service import PredictionService
+            self._prediction_service = PredictionService()
+        return self._prediction_service
     
     def calculate_rpn_score(self, rpn_value: float, rpn_max: float) -> float:
         """
@@ -37,39 +54,56 @@ class HealthService:
         rpn_score = (1 - rpn_value / rpn_max) * 100
         return round(rpn_score, 2)
     
-    def generate_oee_score(self) -> float:
+    def generate_oee_score(self) -> Dict[str, float]:
         """
         Menghitung OEE Score berbasis data sensor terbaru di database.
         Formula: OEE = Availability × Performance × Quality (dalam desimal)
         
-        Jika data tidak tersedia, fallback ke nilai minimum agar konservatif.
+        Availability dihitung dari histori machine_status (Running vs Downtime).
+        Performance dan Quality diambil dari data terbaru.
+        
+        Returns:
+            Dict dengan keys: oee_score, availability_rate, performance_rate, quality_rate
         """
-        latest = db_service.get_latest_machine_status()
-        if not latest:
-            logger.warning("No machine status data available, using OEE_MIN fallback")
-            return float(OEE_MIN)
+        # Ambil histori untuk menghitung availability
+        recent_logs = db_service.get_recent_machine_logs(limit=100)
         
-        perf = latest.get("performance_rate")
-        qual = latest.get("quality_rate")
-        avail = latest.get("availability_rate", 95.0)  # Default availability 95%
+        if not recent_logs:
+            logger.warning("No machine logs available, using fallback values")
+            return {
+                "oee_score": float(OEE_MIN),
+                "availability_rate": 95.0,
+                "performance_rate": 0.0,
+                "quality_rate": 0.0
+            }
         
-        if perf is None or qual is None:
-            logger.warning(f"Missing performance or quality rate: perf={perf}, qual={qual}")
-            return float(OEE_MIN)
+        # Hitung Availability dari histori status
+        running_count = sum(1 for log in recent_logs if log.get("machine_status") == "Running")
+        total_count = len(recent_logs)
+        availability_rate = (running_count / total_count) * 100.0
         
-        # Konversi ke float
-        perf = float(perf)
-        qual = float(qual)
-        avail = float(avail)
+        # Ambil Performance dan Quality dari log terbaru
+        latest_log = recent_logs[0]  # Sudah diurutkan DESC
+        performance_rate = float(latest_log.get("performance_rate", 0))
+        quality_rate = float(latest_log.get("quality_rate", 0))
         
-        # OEE = (Availability / 100) × (Performance / 100) × (Quality / 100) × 100
-        oee_score = (avail / 100.0) * (perf / 100.0) * (qual / 100.0) * 100.0
+        # Hitung OEE = (A × P × Q) / 100^2 × 100
+        oee_score = (availability_rate / 100.0) * (performance_rate / 100.0) * (quality_rate / 100.0) * 100.0
         
         # Clamp ke rentang konfigurasi
         oee_score = max(min(oee_score, float(OEE_MAX)), float(OEE_MIN))
         
-        logger.info(f"OEE calculated: avail={avail}%, perf={perf}%, qual={qual}%, oee={oee_score}%")
-        return round(oee_score, 2)
+        logger.info(
+            f"OEE calculated: availability={availability_rate:.2f}% ({running_count}/{total_count} Running), "
+            f"performance={performance_rate:.2f}%, quality={quality_rate:.2f}%, oee={oee_score:.2f}%"
+        )
+        
+        return {
+            "oee_score": round(oee_score, 2),
+            "availability_rate": round(availability_rate, 2),
+            "performance_rate": round(performance_rate, 2),
+            "quality_rate": round(quality_rate, 2)
+        }
     
     def calculate_final_health_index(self, rpn_score: float, oee_score: float) -> float:
         """
@@ -100,7 +134,142 @@ class HealthService:
         else:
             return "Perlu Perhatian"
     
-    def calculate_component_health(self, rpn_value: float, rpn_max: float) -> Dict[str, Any]:
+    def generate_rule_based_recommendation(self, component_name: str, health_index: float) -> List[str]:
+        """
+        Menghasilkan rekomendasi tindakan perbaikan berbasis aturan FMEA dan Fishbone Diagram.
+        
+        Logika berbasis Tabel 4.5 FMEA dari skripsi untuk mode kegagalan dengan RPN tertinggi
+        per komponen, serta analisis akar penyebab dari Fishbone Diagram.
+        
+        Args:
+            component_name: Nama komponen (Feeder, Printing, Pre-Feeder, Slotter, Stacker)
+            health_index: Final Health Index (0-100)
+            
+        Returns:
+            List rekomendasi tindakan perbaikan spesifik komponen
+        """
+        recommendations = []
+        
+        # Normalisasi nama komponen untuk case-insensitive matching
+        component_normalized = component_name.strip().lower()
+        
+        # =====================================================================
+        # KONDISI KRITIS (Health Index < 50)
+        # Rekomendasi berbasis mode kegagalan RPN tertinggi dari Tabel 4.5 FMEA
+        # =====================================================================
+        if health_index < 50:
+            logger.warning(f"🔴 CRITICAL condition for {component_name} (Health: {health_index})")
+            
+            if "feeder" in component_normalized and "pre" not in component_normalized:
+                # Komponen: Feeder
+                # Mode Kegagalan Prioritas: Keausan roller, masalah vakum
+                recommendations = [
+                    "🔧 URGENT: Periksa keausan roller feeder dan ganti jika perlu",
+                    "🔍 Inspeksi sistem vakum penarik lembaran (kebocoran, tekanan)",
+                    "⚙️ Validasi alignment roller feeder dengan plate cylinder",
+                    "🧹 Bersihkan sensor deteksi kertas dan area feeding",
+                    "📊 Monitor slip ratio dan feeding accuracy"
+                ]
+            
+            elif "printing" in component_normalized:
+                # Komponen: Printing
+                # Mode Kegagalan Prioritas: Misalignment plate, tekanan tidak konsisten
+                recommendations = [
+                    "🔧 URGENT: Periksa alignment plate cylinder terhadap anilox roller",
+                    "🔍 Inspeksi konsistensi tekanan cetak pada semua warna",
+                    "⚙️ Kalibrasi ulang doctor blade untuk distribusi tinta merata",
+                    "🧹 Bersihkan anilox roller dari residu tinta kering",
+                    "📊 Verifikasi register mark accuracy dan adjust jika perlu",
+                    "🔩 Periksa bearing plate cylinder untuk keausan/play"
+                ]
+            
+            elif "pre" in component_normalized and "feeder" in component_normalized:
+                # Komponen: Pre-Feeder
+                # Mode Kegagalan Prioritas: Ketegangan belt, stopper tidak sejajar
+                recommendations = [
+                    "🔧 URGENT: Periksa dan adjust ketegangan belt conveyor",
+                    "🔍 Pastikan stopper penumpukan karton sejajar dan berfungsi",
+                    "⚙️ Inspeksi sensor deteksi tumpukan untuk akurasi",
+                    "🧹 Bersihkan area belt dari debu dan serpihan karton",
+                    "📊 Monitor waktu siklus feeding dan identifikasi bottleneck"
+                ]
+            
+            elif "slotter" in component_normalized:
+                # Komponen: Slotter
+                # Mode Kegagalan Prioritas: Ketajaman pisau, keausan roller creasing
+                recommendations = [
+                    "🔧 URGENT: Periksa ketajaman pisau slotter dan ganti jika tumpul",
+                    "🔍 Inspeksi keausan roller creasing untuk crack/deformasi",
+                    "⚙️ Validasi setting jarak antar roller (slotting & creasing)",
+                    "🧹 Bersihkan serbuk kertas dari area pisau dan roller",
+                    "📊 Ukur kedalaman slot dan ketajaman lipatan (quality check)",
+                    "🔩 Periksa sistem pneumatik untuk tekanan optimal"
+                ]
+            
+            elif "stacker" in component_normalized:
+                # Komponen: Stacker
+                # Mode Kegagalan Prioritas: Sensor penghitung kotor, belt kendor
+                recommendations = [
+                    "🔧 URGENT: Bersihkan sensor penghitung tumpukan dari debu",
+                    "🔍 Periksa ketegangan belt conveyor stacker dan adjust",
+                    "⚙️ Inspeksi mekanisme penumpukan untuk alignment",
+                    "🧹 Bersihkan area stacker dari serpihan dan kotoran",
+                    "📊 Verifikasi akurasi counting dan sesuaikan sensitivity sensor"
+                ]
+            
+            else:
+                # Komponen tidak dikenali atau komponen umum
+                recommendations = [
+                    "🔧 URGENT: Lakukan inspeksi menyeluruh komponen",
+                    "🔍 Identifikasi mode kegagalan dengan analisis FMEA",
+                    "⚙️ Periksa komponen mekanis untuk keausan/kerusakan",
+                    "📊 Review log operasional untuk pola kegagalan",
+                    "🛠️ Konsultasi dengan maintenance engineer untuk root cause analysis"
+                ]
+        
+        # =====================================================================
+        # KONDISI WARNING (50 <= Health Index < 70)
+        # Rekomendasi preventive maintenance dan monitoring intensif
+        # =====================================================================
+        elif 50 <= health_index < 70:
+            logger.warning(f"⚠️ WARNING condition for {component_name} (Health: {health_index})")
+            
+            recommendations = [
+                f"📋 Tingkatkan frekuensi monitoring untuk komponen {component_name}",
+                "🔍 Lakukan inspeksi preventive maintenance dalam 24-48 jam",
+                "📊 Analisis tren performa untuk deteksi early warning signs",
+                "🛠️ Siapkan spare parts kritis untuk antisipasi kegagalan",
+                "📝 Dokumentasikan anomali yang terdeteksi untuk analisis RCA"
+            ]
+            
+            # Tambahan rekomendasi spesifik berdasarkan komponen
+            if "feeder" in component_normalized:
+                recommendations.append("⚙️ Periksa kondisi roller dan belt feeder")
+            elif "printing" in component_normalized:
+                recommendations.append("⚙️ Monitor konsistensi kualitas cetak dan register")
+            elif "slotter" in component_normalized:
+                recommendations.append("⚙️ Evaluasi ketajaman pisau dan kondisi roller")
+            elif "stacker" in component_normalized:
+                recommendations.append("⚙️ Cek akurasi sensor dan mekanisme penumpukan")
+        
+        # =====================================================================
+        # KONDISI BAIK (Health Index >= 70)
+        # Rekomendasi monitoring rutin dan preventive maintenance standar
+        # =====================================================================
+        else:
+            logger.info(f"✅ GOOD condition for {component_name} (Health: {health_index})")
+            
+            recommendations = [
+                "✅ Kondisi komponen dalam keadaan baik",
+                "📅 Lakukan monitoring rutin sesuai jadwal preventive maintenance",
+                "📊 Catat performa baseline untuk referensi future analysis",
+                "🔧 Lanjutkan lubrication dan cleaning sesuai SOP",
+                "📝 Review historical data untuk optimasi maintenance schedule"
+            ]
+        
+        return recommendations
+    
+    def calculate_component_health(self, component_name: str, rpn_value: float, rpn_max: float) -> Dict[str, Any]:
         """
         Menghitung kesehatan komponen secara lengkap.
         
@@ -113,24 +282,109 @@ class HealthService:
         """
         # Hitung komponen-komponen
         rpn_score = self.calculate_rpn_score(rpn_value, rpn_max)
-        oee_score = self.generate_oee_score()
+        
+        # Generate OEE dengan availability dinamis
+        oee_data = self.generate_oee_score()
+        oee_score = oee_data["oee_score"]
+        availability_rate = oee_data["availability_rate"]
+        performance_rate = oee_data["performance_rate"]
+        quality_rate = oee_data["quality_rate"]
+        
+        # Hitung final health index
         final_health_index = self.calculate_final_health_index(rpn_score, oee_score)
         status = self.determine_health_status(final_health_index)
         
-        # Ambil semua komponen OEE dari data terbaru
-        latest_data = db_service.get_latest_machine_status()
-        performance_rate = 0.0
-        quality_rate = 0.0
-        availability_rate = 95.0  # Default availability
+        # Generate rekomendasi berbasis aturan FMEA
+        recommendations = self.generate_rule_based_recommendation(component_name, final_health_index)
         
-        if latest_data:
-            performance_rate = float(latest_data.get("performance_rate", 0))
-            quality_rate = float(latest_data.get("quality_rate", 0))
-            availability_rate = float(latest_data.get("availability_rate", 95.0))
+        logger.info(
+            f"Health calculated for {component_name} - RPN: {rpn_score}, OEE: {oee_score}, "
+            f"Availability: {availability_rate}%, Final: {final_health_index}, "
+            f"Recommendations: {len(recommendations)} items"
+        )
         
-        logger.info(f"Health calculated - RPN: {rpn_score}, OEE: {oee_score}, Final: {final_health_index}")
+        # AUTO-TRIGGER: Pemicu otomatis prediksi maintenance saat health index kritis
+        prediction_result = None
+        auto_triggered = False
         
-        return {
+        if final_health_index < CRITICAL_THRESHOLD:
+            logger.warning(
+                f"⚠️ CRITICAL HEALTH DETECTED! Health Index: {final_health_index} < {CRITICAL_THRESHOLD}"
+            )
+            
+            try:
+                # Dapatkan instance PredictionService
+                prediction_service = self._get_prediction_service()
+                
+                # ===================================================================
+                # MENGGUNAKAN DATA KUMULATIF REAL-TIME DARI DATABASE
+                # ===================================================================
+                logger.info("📊 Fetching real-time cumulative production data from database...")
+                
+                latest_status = db_service.get_latest_machine_status()
+                
+                if latest_status and latest_status.get("cumulative_production") is not None:
+                    # Gunakan data kumulatif real dari simulator
+                    total_produksi = latest_status.get("cumulative_production", 0)
+                    produk_cacat = latest_status.get("cumulative_defects", 0)
+                    
+                    logger.info(
+                        f"✅ Using REAL cumulative data from simulator: "
+                        f"Production={total_produksi} pcs, Defects={produk_cacat} pcs"
+                    )
+                    
+                    # Validasi data: jika production = 0, gunakan nilai minimal
+                    if total_produksi == 0:
+                        logger.warning("⚠️ Cumulative production is 0 (shift just started or machine idle)")
+                        total_produksi = 100  # Minimal untuk prediksi
+                        produk_cacat = 5
+                        logger.info(f"Using minimal values for prediction: Production={total_produksi}, Defects={produk_cacat}")
+                else:
+                    # Fallback: data kumulatif belum tersedia (database belum ada cumulative columns)
+                    logger.warning("⚠️ Cumulative data not available in database. Using fallback defaults.")
+                    total_produksi = 4000
+                    produk_cacat = 150
+                
+                input_data = {
+                    "total_produksi": total_produksi,
+                    "produk_cacat": produk_cacat
+                }
+                
+                logger.info(f"🤖 Auto-triggering maintenance prediction with input: {input_data}")
+                
+                # Panggil fungsi prediksi
+                prediction_result = prediction_service.predict_maintenance_duration(input_data)
+                auto_triggered = True
+                
+                # Log hasil prediksi
+                if prediction_result.get('success'):
+                    logger.warning(
+                        f"✅ AUTO-PREDICTION COMPLETED | "
+                        f"Health Index: {final_health_index} | "
+                        f"Predicted Maintenance Duration: {prediction_result.get('prediction_formatted', 'N/A')} | "
+                        f"Input: Total Produksi={total_produksi}, Produk Cacat={produk_cacat} | "
+                        f"RECOMMENDATION: Schedule immediate maintenance!"
+                    )
+                else:
+                    logger.error(
+                        f"❌ AUTO-PREDICTION FAILED | "
+                        f"Health Index: {final_health_index} | "
+                        f"Error: {prediction_result.get('message', 'Unknown error')}"
+                    )
+                
+            except Exception as e:
+                logger.error(
+                    f"❌ ERROR during auto-trigger prediction | "
+                    f"Health Index: {final_health_index} | "
+                    f"Exception: {str(e)}"
+                )
+                prediction_result = {
+                    "success": False,
+                    "message": f"Auto-trigger error: {str(e)}"
+                }
+        
+        # Kembalikan hasil dengan informasi prediksi otomatis dan rekomendasi
+        result = {
             "rpn_score": rpn_score,
             "oee_score": oee_score,
             "final_health_index": final_health_index,
@@ -139,8 +393,19 @@ class HealthService:
             "rpn_max": rpn_max,
             "availability_rate": availability_rate,
             "performance_rate": performance_rate,
-            "quality_rate": quality_rate
+            "quality_rate": quality_rate,
+            "recommendations": recommendations  # Rekomendasi berbasis aturan FMEA
         }
+        
+        # Tambahkan informasi auto-trigger jika terjadi
+        if auto_triggered:
+            result["auto_prediction"] = {
+                "triggered": True,
+                "trigger_threshold": CRITICAL_THRESHOLD,
+                "prediction_result": prediction_result
+            }
+        
+        return result
     
     def get_health_color(self, health_index: float) -> str:
         """

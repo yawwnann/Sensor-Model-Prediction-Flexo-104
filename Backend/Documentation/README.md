@@ -9,24 +9,30 @@ Backend API untuk sistem monitoring kesehatan mesin Flexo dengan integrasi datab
 - [Setup & Instalasi](#setup--instalasi)
 - [API Endpoints](#api-endpoints)
 - [Kalkulasi Health Index](#kalkulasi-health-index)
+- [Auto-Prediction Trigger](#auto-prediction-trigger) ⭐ NEW
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 
 ## 🚀 Quick Start
 
 ### 1. Install Dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
 ### 2. Setup Environment
+
 Edit `.env`:
+
 ```env
 DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@db.xxx.supabase.co:5432/postgres"
 ```
 
 ### 3. Setup Database
+
 Jalankan SQL di Supabase SQL Editor:
+
 ```sql
 CREATE TABLE components (
   id SERIAL PRIMARY KEY,
@@ -34,20 +40,22 @@ CREATE TABLE components (
   rpn_value INT NOT NULL
 );
 
-INSERT INTO components (name, rpn_value) VALUES 
-  ('Pre-Feeder', 168), 
-  ('Feeder', 192), 
-  ('Printing', 162), 
-  ('Slotter', 144), 
+INSERT INTO components (name, rpn_value) VALUES
+  ('Pre-Feeder', 168),
+  ('Feeder', 192),
+  ('Printing', 162),
+  ('Slotter', 144),
   ('Stacker', 54);
 ```
 
 ### 4. Run Server
+
 ```bash
 python app.py
 ```
 
 ### 5. Test API
+
 ```bash
 curl http://localhost:5000/api/health/Pre-Feeder
 ```
@@ -74,17 +82,20 @@ Lihat [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) untuk penjelasan detail setia
 ## 🔧 Setup & Instalasi
 
 ### Prerequisites
+
 - Python 3.8+
 - PostgreSQL (Supabase)
 - pip
 
 ### Step 1: Install Dependencies
+
 ```bash
 cd backend
 pip install -r requirements.txt
 ```
 
 Atau install manual:
+
 ```bash
 pip install Flask psycopg2-binary python-dotenv
 ```
@@ -95,6 +106,7 @@ pip install Flask psycopg2-binary python-dotenv
 2. Pergi ke Settings → Database
 3. Copy PostgreSQL Connection String
 4. Edit file `.env`:
+
 ```env
 DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@db.puqyxetcywvedkynmimd.supabase.co:5432/postgres"
 ```
@@ -110,11 +122,11 @@ CREATE TABLE components (
   rpn_value INT NOT NULL
 );
 
-INSERT INTO components (name, rpn_value) VALUES 
-  ('Pre-Feeder', 168), 
-  ('Feeder', 192), 
-  ('Printing', 162), 
-  ('Slotter', 144), 
+INSERT INTO components (name, rpn_value) VALUES
+  ('Pre-Feeder', 168),
+  ('Feeder', 192),
+  ('Printing', 162),
+  ('Slotter', 144),
   ('Stacker', 54);
 ```
 
@@ -125,6 +137,7 @@ python test_connection.py
 ```
 
 Output yang diharapkan:
+
 ```
 ======================================================================
 DATABASE CONNECTION TEST
@@ -159,6 +172,7 @@ python app.py
 ```
 
 Output:
+
 ```
 ======================================================================
 FlexoTwin Smart Maintenance 4.0
@@ -190,9 +204,11 @@ Tekan CTRL+C untuk menghentikan server.
 ## 📡 API Endpoints
 
 ### 1. Health Check Umum
+
 **Endpoint:** `GET /api/health`
 
 **Response:**
+
 ```json
 {
   "status": "API Server Running",
@@ -203,9 +219,11 @@ Tekan CTRL+C untuk menghentikan server.
 ```
 
 ### 2. Daftar Semua Komponen
+
 **Endpoint:** `GET /api/components`
 
 **Response:**
+
 ```json
 {
   "components": [
@@ -225,11 +243,13 @@ Tekan CTRL+C untuk menghentikan server.
 ```
 
 ### 3. Health Check Komponen
+
 **Endpoint:** `GET /api/health/<component_name>`
 
 **Contoh:** `GET /api/health/Pre-Feeder`
 
 **Response (Success):**
+
 ```json
 {
   "componentName": "Pre-Feeder",
@@ -247,6 +267,7 @@ Tekan CTRL+C untuk menghentikan server.
 ```
 
 **Response (Not Found):**
+
 ```json
 {
   "error": "Komponen tidak ditemukan",
@@ -256,11 +277,13 @@ Tekan CTRL+C untuk menghentikan server.
 ```
 
 ### 4. Detail Health Komponen
+
 **Endpoint:** `GET /api/components/<component_name>/health`
 
 **Contoh:** `GET /api/components/Pre-Feeder/health`
 
 **Response:**
+
 ```json
 {
   "component": {
@@ -306,10 +329,12 @@ Final Health Index = (RPN_Score * 0.4) + (OEE_Score * 0.6)
 ### Penjelasan
 
 - **RPN Score (40%)**: Risk Priority Number dari FMEA analysis
+
   - Semakin rendah RPN, semakin tinggi score
   - Range: 0-100
 
 - **OEE Score (60%)**: Overall Equipment Effectiveness
+
   - Simulasi data real-time
   - Range: 85.0-99.5
 
@@ -319,17 +344,103 @@ Final Health Index = (RPN_Score * 0.4) + (OEE_Score * 0.6)
 
 ### Status Kesehatan
 
-| Health Index | Status | Warna | Deskripsi |
-|---|---|---|---|
-| >= 90 | Sehat | 🟢 Green | Sangat baik, tidak ada tindakan |
-| 80-89 | Sehat | 🟢 Green | Baik, lakukan monitoring rutin |
-| 70-79 | Sehat | 🟢 Light Green | Normal, perhatikan tren |
-| 50-69 | Perlu Perhatian | 🟠 Orange | Perlu perhatian, rencanakan maintenance |
-| < 50 | Kritis | 🔴 Red | Kritis, lakukan maintenance segera |
+| Health Index | Status           | Warna            | Deskripsi                                |
+| ------------ | ---------------- | ---------------- | ---------------------------------------- |
+| >= 90        | Sehat            | 🟢 Green         | Sangat baik, tidak ada tindakan          |
+| 80-89        | Sehat            | 🟢 Green         | Baik, lakukan monitoring rutin           |
+| 70-79        | Sehat            | 🟢 Light Green   | Normal, perhatikan tren                  |
+| 50-69        | Perlu Perhatian  | 🟠 Orange        | Perlu perhatian, rencanakan maintenance  |
+| < 50         | Kritis           | 🔴 Red           | Kritis, lakukan maintenance segera       |
+| **< 40**     | **Auto-Trigger** | 🚨 **Red Alert** | **Pemicu otomatis prediksi maintenance** |
+
+## 🤖 Auto-Prediction Trigger
+
+### Fitur Baru: Pemicu Otomatis Prediksi Maintenance ⭐
+
+Sistem sekarang secara otomatis menjalankan prediksi maintenance ketika **Health Index < 40** (Critical Threshold).
+
+**Keunggulan:**
+
+- ✅ **Proaktif**: Deteksi otomatis kondisi kritis
+- ✅ **Preventif**: Prediksi sebelum terjadi breakdown
+- ✅ **Tanpa Manual**: Tidak perlu klik tombol manual
+
+### Cara Kerja
+
+1. **Monitoring Kontinyu**: Setiap kali `/api/health/<component>` dipanggil
+2. **Deteksi Kritis**: Jika `health_index < 40.0`
+3. **Auto-Trigger**: Sistem otomatis memanggil ML model
+4. **Logging**: Hasil dicatat dengan level WARNING
+5. **Response**: Hasil prediksi ditambahkan ke API response
+
+### Response dengan Auto-Prediction
+
+Ketika auto-trigger aktif, response akan berisi field tambahan:
+
+```json
+{
+  "component_name": "Printing Unit",
+  "health_index": 35.2,
+  "status": "Critical",
+  "metrics": { ... },
+  "auto_prediction": {
+    "triggered": true,
+    "trigger_threshold": 40.0,
+    "prediction_result": {
+      "success": true,
+      "prediction": 127.5,
+      "prediction_formatted": "2 jam 7 menit",
+      "input": {
+        "total_produksi": 5000,
+        "produk_cacat": 150
+      },
+      "message": "Prediksi berhasil"
+    }
+  }
+}
+```
+
+### Konfigurasi
+
+Threshold dapat diubah di `health_service.py`:
+
+```python
+# Default: 40.0
+CRITICAL_THRESHOLD = 40.0
+
+# Lebih sensitif (trigger lebih mudah)
+CRITICAL_THRESHOLD = 50.0
+
+# Lebih konservatif (trigger lebih jarang)
+CRITICAL_THRESHOLD = 30.0
+```
+
+### Monitoring Log
+
+```bash
+# Monitor auto-trigger real-time
+tail -f Backend/logs/app.log | grep "AUTO"
+
+# Contoh log:
+⚠️ CRITICAL HEALTH DETECTED! Health Index: 35.2 < 40.0
+🤖 Auto-triggering maintenance prediction with input: {...}
+✅ AUTO-PREDICTION COMPLETED | Health Index: 35.2 | Predicted Maintenance Duration: 2 jam 7 menit
+```
+
+### Dokumentasi Lengkap
+
+Lihat [AUTO_PREDICTION_TRIGGER.md](AUTO_PREDICTION_TRIGGER.md) untuk:
+
+- Dokumentasi lengkap
+- Flow diagram
+- Testing guide
+- Troubleshooting
+- Integration dengan frontend
 
 ## 🧪 Testing
 
 ### Test Database Connection
+
 ```bash
 python test_connection.py
 ```
@@ -378,15 +489,18 @@ Lihat [TROUBLESHOOTING.md](TROUBLESHOOTING.md) untuk panduan lengkap troubleshoo
 ### Error Umum
 
 **Error: Connection Timed Out**
+
 - Gunakan IPv4 address di Supabase
 - Disable IPv6 di Windows
 - Lihat TROUBLESHOOTING.md untuk solusi detail
 
 **Error: DATABASE_URL tidak ditemukan**
+
 - Pastikan file `.env` ada di folder `backend/`
 - Pastikan format DATABASE_URL benar
 
 **Error: relation 'components' does not exist**
+
 - Jalankan SQL query untuk membuat tabel
 - Pastikan Anda menjalankan query di database yang benar
 

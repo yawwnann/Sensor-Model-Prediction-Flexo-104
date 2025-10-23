@@ -9,6 +9,7 @@ import os
 import json
 import random
 import time
+import atexit
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
@@ -36,6 +37,10 @@ SIMULATION_INTERVAL = 5  # Detik
 PERFORMANCE_VARIANCE = 5  # ±5%
 QUALITY_VARIANCE = 2     # ±2%
 
+# Production Simulation Configuration
+BASE_PRODUCTION_RATE = 100  # Produksi per 5 detik saat performance 100%
+SHIFT_DURATION_SECONDS = 28800  # 8 jam = 28800 detik
+
 
 # ============================================================================
 # GLOBAL VARIABLES
@@ -49,6 +54,11 @@ downtime_probability = None
 
 # MQTT Client
 mqtt_client = None
+
+# ✅ STATE KUMULATIF - Data produksi yang terakumulasi
+cumulative_production = 0
+cumulative_defects = 0
+shift_start_time = None
 
 
 # ============================================================================
@@ -269,16 +279,50 @@ def setup_mqtt_connection():
 def simulate_sensor_data():
     """
     Mensimulasikan data sensor berdasarkan statistik historis C_FL104.
+    Termasuk simulasi produksi dan cacat kumulatif.
     
     Return:
     - dict: Data sensor yang disimulasikan
     """
+    
+    global cumulative_production, cumulative_defects, shift_start_time
+    
+    # Inisialisasi shift start time jika belum ada
+    if shift_start_time is None:
+        shift_start_time = datetime.now()
+    
+    # ========================================================================
+    # CEK RESET SHIFT (setiap 8 jam)
+    # ========================================================================
+    elapsed_time = (datetime.now() - shift_start_time).total_seconds()
+    
+    if elapsed_time >= SHIFT_DURATION_SECONDS:
+        print(f"\n{'='*70}")
+        print(f" SHIFT RESET")
+        print(f"{'='*70}")
+        print(f"Previous shift summary:")
+        print(f"  Total Production: {cumulative_production} pcs")
+        print(f"  Total Defects: {cumulative_defects} pcs")
+        if cumulative_production > 0:
+            print(f"  Defect Rate: {(cumulative_defects/cumulative_production*100):.2f}%")
+        print(f"{'='*70}\n")
+        
+        # Reset kumulatif
+        cumulative_production = 0
+        cumulative_defects = 0
+        shift_start_time = datetime.now()
+    
+    # ========================================================================
+    # SIMULASI STATUS MESIN & PRODUKSI
+    # ========================================================================
     
     # Tentukan status mesin berdasarkan probabilitas downtime
     if random.random() < downtime_probability:
         machine_status = "Downtime"
         performance_rate = 0.0
         quality_rate = 0.0
+        interval_production = 0
+        interval_defects = 0
     else:
         machine_status = "Running"
         
@@ -289,15 +333,53 @@ def simulate_sensor_data():
         # Simulasikan quality dengan variance
         variance_qual = random.uniform(-QUALITY_VARIANCE, QUALITY_VARIANCE)
         quality_rate = max(0, min(100, avg_quality_rate + variance_qual))
+        
+        # ====================================================================
+        # HITUNG PRODUKSI INTERVAL (5 detik)
+        # ====================================================================
+        # Produksi berbasis performance rate
+        # Base rate: 100 pcs per 5 detik pada performance 100%
+        interval_production = int(BASE_PRODUCTION_RATE * (performance_rate / 100.0))
+        
+        # Tambahkan variasi acak ±10%
+        variation = random.uniform(0.9, 1.1)
+        interval_production = max(0, int(interval_production * variation))
+        
+        # ====================================================================
+        # HITUNG CACAT INTERVAL (5 detik)
+        # ====================================================================
+        # Cacat berbasis quality rate
+        # Quality rate tinggi = defect rate rendah
+        defect_rate = (100 - quality_rate) / 100.0
+        interval_defects = int(interval_production * defect_rate)
+        
+        # Tambahkan element of chance untuk cacat
+        if random.random() < 0.3:  # 30% chance ada cacat tambahan
+            interval_defects += random.randint(1, 3)
+        
+        # Pastikan defects tidak melebihi production
+        interval_defects = min(interval_defects, interval_production)
+        
+        # ====================================================================
+        # UPDATE KUMULATIF
+        # ====================================================================
+        cumulative_production += interval_production
+        cumulative_defects += interval_defects
     
-    # Buat payload JSON
+    # ========================================================================
+    # BUAT PAYLOAD JSON
+    # ========================================================================
     sensor_data = {
         "machine_id": TARGET_MACHINE,
         "machine_status": machine_status,
         "performance_rate": round(performance_rate, 2),
         "quality_rate": round(quality_rate, 2),
+        "cumulative_production": cumulative_production,  # ✅ Data kumulatif
+        "cumulative_defects": cumulative_defects,        # ✅ Data kumulatif
+        "interval_production": interval_production,      # Produksi interval ini
+        "interval_defects": interval_defects,            # Cacat interval ini
         "timestamp": datetime.now().isoformat(),
-        "simulator_version": "1.0"
+        "simulator_version": "2.0"  # Updated version
     }
     
     return sensor_data
@@ -305,7 +387,7 @@ def simulate_sensor_data():
 
 def publish_sensor_data(client, sensor_data):
     """
-    Mempublikasikan data sensor ke MQTT broker.
+    Mempublikasikan data sensor ke MQTT broker dengan logging yang lebih detail.
     
     Parameter:
     - client: MQTT client instance
@@ -321,11 +403,21 @@ def publish_sensor_data(client, sensor_data):
         
         # Check publish result
         if result.rc == mqtt.MQTT_ERR_SUCCESS:
-            status_icon = "✓" if sensor_data["machine_status"] == "Running" else "⚠"
-            print(f"{status_icon} [{sensor_data['timestamp']}] "
-                  f"Status: {sensor_data['machine_status']:8} | "
-                  f"Performance: {sensor_data['performance_rate']:6.2f}% | "
-                  f"Quality: {sensor_data['quality_rate']:6.2f}%")
+            status_icon = "🟢" if sensor_data["machine_status"] == "Running" else "🔴"
+            
+            # Display status
+            print(f"{status_icon} [{sensor_data['timestamp']}]")
+            print(f"  Status: {sensor_data['machine_status']}")
+            print(f"  Performance: {sensor_data['performance_rate']:.2f}% | Quality: {sensor_data['quality_rate']:.2f}%")
+            print(f"  Cumulative Production: {sensor_data['cumulative_production']} pcs")
+            print(f"  Cumulative Defects: {sensor_data['cumulative_defects']} pcs")
+            
+            # Calculate defect rate if there's production
+            if sensor_data['cumulative_production'] > 0:
+                defect_rate = (sensor_data['cumulative_defects'] / sensor_data['cumulative_production']) * 100
+                print(f"  Current Defect Rate: {defect_rate:.2f}%")
+            
+            print(f"   Published to {MQTT_TOPIC}\n")
         else:
             print(f"[ERROR] Gagal publish data. Code: {result.rc}")
             
@@ -340,10 +432,12 @@ def run_simulation():
     
     print(f"\n[INFO] Simulasi dimulai. Interval: {SIMULATION_INTERVAL} detik")
     print(f"[INFO] Topic MQTT: {MQTT_TOPIC}")
+    print(f"[INFO] Base Production Rate: {BASE_PRODUCTION_RATE} pcs / 5 sec")
+    print(f"[INFO] Shift Duration: {SHIFT_DURATION_SECONDS/3600:.1f} hours")
     print(f"[INFO] Tekan CTRL+C untuk menghentikan simulasi\n")
     
     print("="*70)
-    print("SIMULATION RUNNING")
+    print("SIMULATION RUNNING (v2.0 - With Cumulative Data)")
     print("="*70 + "\n")
     
     try:
@@ -364,26 +458,68 @@ def run_simulation():
             time.sleep(SIMULATION_INTERVAL)
             
     except KeyboardInterrupt:
-        print(f"\n\n[INFO] Simulasi dihentikan oleh user")
-        print(f"[INFO] Total iterasi: {iteration}")
+        print(f"\n\n{'='*70}")
+        print(f"🛑 SIMULATION STOPPED BY USER")
+        print(f"{'='*70}")
+        print(f"Final shift summary:")
+        print(f"  Total Iterations: {iteration}")
+        print(f"  Total Production: {cumulative_production} pcs")
+        print(f"  Total Defects: {cumulative_defects} pcs")
+        if cumulative_production > 0:
+            print(f"  Overall Defect Rate: {(cumulative_defects/cumulative_production*100):.2f}%")
+        print(f"{'='*70}")
     except Exception as e:
         print(f"\n[ERROR] Error dalam simulasi: {e}")
     finally:
-        # Cleanup
+        # Cleanup MQTT connection properly
         if mqtt_client:
-            mqtt_client.loop_stop()
-            mqtt_client.disconnect()
-            print("[INFO] MQTT connection closed")
+            try:
+                mqtt_client.loop_stop()
+                mqtt_client.disconnect()
+                # Wait for clean disconnect
+                time.sleep(0.5)
+                print("[INFO] MQTT connection closed cleanly")
+            except Exception as e:
+                print(f"[WARNING] Error during MQTT cleanup: {e}")
 
 
 # ============================================================================
 # MAIN ENTRY POINT
 # ============================================================================
 
+def cleanup_mqtt():
+    """
+    Cleanup function untuk MQTT client.
+    Dipanggil oleh atexit atau exception handler.
+    """
+    global mqtt_client
+    if mqtt_client:
+        try:
+            mqtt_client.loop_stop()
+            mqtt_client.disconnect()
+            time.sleep(0.3)
+            print("[INFO] MQTT cleanup completed")
+        except Exception as e:
+            # Suppress error during cleanup
+            pass
+
+
 def main():
     """
     Main function untuk menjalankan sensor simulator.
     """
+    
+    import signal
+    
+    def signal_handler(signum, frame):
+        print("\n[INFO] Shutdown signal received")
+        cleanup_mqtt()
+        print("[INFO] Simulator stopped")
+        os._exit(0)
+    
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     
     print("\n" + "="*70)
     print("FlexoTwin Smart Sensor Simulator")
@@ -391,6 +527,9 @@ def main():
     print("="*70)
     
     global avg_availability_rate, avg_performance_rate, avg_quality_rate, downtime_probability, mqtt_client
+    
+    # Register cleanup handler
+    atexit.register(cleanup_mqtt)
     
     # ========================================================================
     # PHASE 1: Load dan analyze data

@@ -128,34 +128,34 @@ const FMEATable = ({ components }) => {
 
   const getRPNColor = (rpn) => {
     if (rpn > 250) return "text-red-600 bg-red-50";
-    if (rpn > 150) return "text-yellow-600 bg-yellow-50";
-    return "text-green-600 bg-green-50";
+    if (rpn > 150) return "text-amber-600 bg-amber-50";
+    return "text-emerald-600 bg-emerald-50";
   };
 
   const getRPNBorderColor = (rpn) => {
-    if (rpn > 250) return "border-red-300";
-    if (rpn > 150) return "border-yellow-300";
-    return "border-green-300";
+    if (rpn > 250) return "border-red-200";
+    if (rpn > 150) return "border-amber-200";
+    return "border-emerald-200";
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 border-2 border-gray-200">
+    <div className="bg-white rounded-lg shadow-sm p-6 border border-slate-200">
       <div className="flex items-center gap-2 mb-4">
-        <AlertTriangle className="w-5 h-5 text-orange-600" />
-        <h3 className="text-lg font-semibold text-gray-800">
+        <AlertTriangle className="w-5 h-5 text-orange-500" />
+        <h3 className="text-lg font-semibold text-slate-800">
           FMEA Analysis (Failure Mode and Effects Analysis)
         </h3>
       </div>
 
       {/* Component Selector */}
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-slate-700 mb-2">
           Select Component:
         </label>
         <select
           value={selectedComponent}
           onChange={(e) => setSelectedComponent(e.target.value)}
-          className="w-full md:w-64 px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          className="w-full md:w-64 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
           {components.map((comp) => (
             <option key={comp} value={comp}>
@@ -167,7 +167,7 @@ const FMEATable = ({ components }) => {
 
       {/* RPN Score Badge */}
       <div
-        className={`inline-block px-4 py-2 rounded-lg border-2 mb-4 ${getRPNColor(
+        className={`inline-block px-4 py-2 rounded-lg border mb-4 ${getRPNColor(
           fmeaData.rpn
         )} ${getRPNBorderColor(fmeaData.rpn)}`}
       >
@@ -185,29 +185,29 @@ const FMEATable = ({ components }) => {
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-gray-100">
-              <th className="border border-gray-300 px-4 py-2 text-left text-sm font-semibold text-gray-700">
+            <tr className="bg-slate-100">
+              <th className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold text-slate-700">
                 Failure Mode
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-left text-sm font-semibold text-gray-700">
+              <th className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold text-slate-700">
                 Root Cause
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-left text-sm font-semibold text-gray-700">
+              <th className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold text-slate-700">
                 Effect
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-center text-sm font-semibold text-gray-700">
+              <th className="border border-slate-300 px-4 py-2 text-center text-sm font-semibold text-slate-700">
                 S
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-center text-sm font-semibold text-gray-700">
+              <th className="border border-slate-300 px-4 py-2 text-center text-sm font-semibold text-slate-700">
                 O
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-center text-sm font-semibold text-gray-700">
+              <th className="border border-slate-300 px-4 py-2 text-center text-sm font-semibold text-slate-700">
                 D
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-center text-sm font-semibold text-gray-700">
+              <th className="border border-slate-300 px-4 py-2 text-center text-sm font-semibold text-slate-700">
                 RPN
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-center text-sm font-semibold text-gray-700">
+              <th className="border border-slate-300 px-4 py-2 text-center text-sm font-semibold text-slate-700">
                 Action
               </th>
             </tr>
@@ -220,40 +220,40 @@ const FMEATable = ({ components }) => {
 
               return (
                 <React.Fragment key={index}>
-                  <tr className="hover:bg-gray-50 transition-colors">
-                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                  <tr className="hover:bg-slate-50 transition-colors">
+                    <td className="border border-slate-300 px-4 py-2 text-sm text-slate-800">
                       {failure.mode}
                     </td>
-                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                    <td className="border border-slate-300 px-4 py-2 text-sm text-slate-800">
                       {failure.cause}
                     </td>
-                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                    <td className="border border-slate-300 px-4 py-2 text-sm text-slate-800">
                       {failure.effect}
                     </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center text-sm font-semibold">
+                    <td className="border border-slate-300 px-4 py-2 text-center text-sm font-semibold text-slate-700">
                       {failure.severity}
                     </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center text-sm font-semibold">
+                    <td className="border border-slate-300 px-4 py-2 text-center text-sm font-semibold text-slate-700">
                       {failure.occurrence}
                     </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center text-sm font-semibold">
+                    <td className="border border-slate-300 px-4 py-2 text-center text-sm font-semibold text-slate-700">
                       {failure.detection}
                     </td>
                     <td
-                      className={`border border-gray-300 px-4 py-2 text-center text-sm font-bold ${
+                      className={`border border-slate-300 px-4 py-2 text-center text-sm font-bold ${
                         rpn > 250
                           ? "text-red-600"
                           : rpn > 150
-                          ? "text-yellow-600"
-                          : "text-green-600"
+                          ? "text-amber-600"
+                          : "text-emerald-600"
                       }`}
                     >
                       {rpn}
                     </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
+                    <td className="border border-slate-300 px-4 py-2 text-center">
                       <button
                         onClick={() => toggleRow(index)}
-                        className="text-indigo-600 hover:text-indigo-800 transition-colors"
+                        className="text-blue-600 hover:text-blue-700 transition-colors"
                       >
                         {isExpanded ? (
                           <ChevronUp className="w-5 h-5" />
@@ -267,13 +267,13 @@ const FMEATable = ({ components }) => {
                     <tr>
                       <td
                         colSpan="8"
-                        className="border border-gray-300 bg-blue-50 px-4 py-3"
+                        className="border border-slate-300 bg-blue-50 px-4 py-3"
                       >
                         <div className="text-sm">
-                          <p className="font-semibold text-gray-800 mb-2">
-                            📋 Recommended Actions:
+                          <p className="font-semibold text-slate-800 mb-2">
+                            Recommended Actions:
                           </p>
-                          <ul className="list-disc list-inside space-y-1 text-gray-700">
+                          <ul className="list-disc list-inside space-y-1 text-slate-700">
                             {rpn > 250 && (
                               <>
                                 <li>
@@ -314,7 +314,7 @@ const FMEATable = ({ components }) => {
       </div>
 
       {/* Legend */}
-      <div className="mt-4 text-xs text-gray-600 space-y-1">
+      <div className="mt-4 text-xs text-slate-600 space-y-1">
         <p>
           <strong>S (Severity):</strong> How severe is the effect on the
           customer (1-10)

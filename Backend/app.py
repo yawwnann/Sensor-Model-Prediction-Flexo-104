@@ -8,6 +8,7 @@ import signal
 import sys
 import os
 import logging
+import atexit
 from flask import Flask, jsonify
 from flask_cors import CORS
 from src.utils.logger import get_logger, log_section, log_success, log_error, log_warning
@@ -77,6 +78,13 @@ def create_app():
     try:
         mqtt_client = initialize_mqtt()
         log_success(logger, "MQTT service initialized and started in background")
+        
+        # Register cleanup for Flask shutdown
+        @app.teardown_appcontext
+        def shutdown_mqtt(exception=None):
+            """Cleanup MQTT when Flask app context ends"""
+            if exception:
+                logger.error(f"App context error: {exception}")
     except Exception as e:
         log_error(logger, f"Error initializing MQTT service: {e}")
         log_warning(logger, "Application will continue without MQTT service")
@@ -131,17 +139,29 @@ def shutdown_handler(signum, frame):
     Dipanggil saat menerima SIGINT (Ctrl+C) atau SIGTERM.
     """
     log_section(logger, "SHUTDOWN SIGNAL RECEIVED")
+    cleanup_resources()
+    log_success(logger, "Application shutdown complete")
     
+    # Force exit to prevent hanging threads
+    os._exit(0)
+
+
+def cleanup_resources():
+    """
+    Cleanup resources seperti MQTT client.
+    Dipanggil oleh signal handler atau atexit.
+    """
     try:
         mqtt_client = get_mqtt_client()
-        if mqtt_client:
+        if mqtt_client and not getattr(mqtt_client, 'is_stopping', False):
             mqtt_client.stop()
-            log_success(logger, "MQTT client stopped")
+            log_success(logger, "MQTT client stopped cleanly")
     except Exception as e:
         log_error(logger, f"Error stopping MQTT client: {e}")
     
-    log_success(logger, "Application shutdown complete")
-    sys.exit(0)
+    # Give time for threads to cleanup
+    import time
+    time.sleep(0.2)
 
 
 if __name__ == '__main__':
@@ -161,6 +181,9 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
     
+    # Register atexit handler sebagai fallback
+    atexit.register(cleanup_resources)
+    
     # Hanya tampilkan startup message saat main server process (bukan reloader parent)
     is_reloader_process = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
     is_first_time = not os.environ.get('WERKZEUG_RUN_MAIN')
@@ -178,5 +201,6 @@ if __name__ == '__main__':
         host='0.0.0.0',
         port=5000,
         debug=True,
-        use_reloader=True
+        use_reloader=True,
+        threaded=True
     )
