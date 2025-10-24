@@ -323,8 +323,29 @@ def simulate_sensor_data():
         quality_rate = 0.0
         interval_production = 0
         interval_defects = 0
+        
+        # ====================================================================
+        # TAMBAHKAN ERROR MESSAGE SAAT DOWNTIME
+        # ====================================================================
+        # Daftar error yang mungkin terjadi (sesuai dengan training data)
+        possible_errors = [
+            "SLOTTER_MISALIGNMENT",
+            "FEEDER_JAM_ELEC",
+            "FEEDER_JAM_MECH",
+            "PRINT_GHOSTING",
+            "PRINT_BLOBBING",
+            "INK_BLOBBING",
+            "CREASING_CRACK",
+            "CREASING_MISALIGNMENT",
+            "DIECUT_PECAH",
+            "DIECUT_TUMPUL"
+        ]
+        error_message = random.choice(possible_errors)
+        failure_reason = error_message  # Backup field
     else:
         machine_status = "Running"
+        error_message = None  # Tidak ada error saat running normal
+        failure_reason = None
         
         # Simulasikan performance dengan variance
         variance_perf = random.uniform(-PERFORMANCE_VARIANCE, PERFORMANCE_VARIANCE)
@@ -379,8 +400,14 @@ def simulate_sensor_data():
         "interval_production": interval_production,      # Produksi interval ini
         "interval_defects": interval_defects,            # Cacat interval ini
         "timestamp": datetime.now().isoformat(),
-        "simulator_version": "2.0"  # Updated version
+        "simulator_version": "2.1"  # Updated version with error_message
     }
+    
+    # ✅ TAMBAHKAN ERROR MESSAGE KE PAYLOAD (hanya jika downtime)
+    if machine_status == "Downtime" and error_message:
+        sensor_data["error_message"] = error_message
+        sensor_data["failure_reason"] = failure_reason
+        sensor_data["is_critical"] = True
     
     return sensor_data
 
@@ -408,6 +435,11 @@ def publish_sensor_data(client, sensor_data):
             # Display status
             print(f"{status_icon} [{sensor_data['timestamp']}]")
             print(f"  Status: {sensor_data['machine_status']}")
+            
+            # ✅ TAMPILKAN ERROR MESSAGE JIKA ADA
+            if sensor_data.get("error_message"):
+                print(f"  ⚠️ ERROR: {sensor_data['error_message']}")
+            
             print(f"  Performance: {sensor_data['performance_rate']:.2f}% | Quality: {sensor_data['quality_rate']:.2f}%")
             print(f"  Cumulative Production: {sensor_data['cumulative_production']} pcs")
             print(f"  Cumulative Defects: {sensor_data['cumulative_defects']} pcs")
@@ -417,7 +449,7 @@ def publish_sensor_data(client, sensor_data):
                 defect_rate = (sensor_data['cumulative_defects'] / sensor_data['cumulative_production']) * 100
                 print(f"  Current Defect Rate: {defect_rate:.2f}%")
             
-            print(f"   Published to {MQTT_TOPIC}\n")
+            print(f"  ✓ Published to {MQTT_TOPIC}\n")
         else:
             print(f"[ERROR] Gagal publish data. Code: {result.rc}")
             

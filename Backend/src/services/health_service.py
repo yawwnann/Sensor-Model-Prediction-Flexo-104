@@ -317,66 +317,133 @@ class HealthService:
                 prediction_service = self._get_prediction_service()
                 
                 # ===================================================================
-                # MENGGUNAKAN DATA KUMULATIF REAL-TIME DARI DATABASE
+                # MENGGUNAKAN MODEL MURNI FISHBONE - HANYA PERLU 'REASON'
                 # ===================================================================
-                logger.info("[DATA] Fetching real-time cumulative production data from database...")
+                logger.info("[AUTO-TRIGGER] Fetching error reason from latest sensor data...")
                 
                 latest_status = db_service.get_latest_machine_status()
                 
-                if latest_status and latest_status.get("cumulative_production") is not None:
-                    # Gunakan data kumulatif real dari simulator
-                    total_produksi = latest_status.get("cumulative_production", 0)
-                    produk_cacat = latest_status.get("cumulative_defects", 0)
+                # ===================================================================
+                # EKSTRAK ERROR REASON DENGAN FALLBACK CASCADE CERDAS
+                # ===================================================================
+                current_error_reason = ""
+                if latest_status:
+                    # Priority 1: error_message (dari sensor simulator)
+                    current_error_reason = latest_status.get("error_message", "")
+                    
+                    # Priority 2: failure_reason (backup field)
+                    if not current_error_reason:
+                        current_error_reason = latest_status.get("failure_reason", "")
+                    
+                    # Priority 3: downtime_reason (alternative field)
+                    if not current_error_reason:
+                        current_error_reason = latest_status.get("downtime_reason", "")
+                    
+                    # Priority 4: Mapping berbasis komponen (default intelligent)
+                    if not current_error_reason:
+                        component_failure_map = {
+                            "Pre-Feeder": "FEEDER_JAM_MECH",
+                            "Feeder": "FEEDER_JAM_ELEC",
+                            "Printing": "PRINT_GHOSTING",
+                            "Slotter": "SLOTTER_MISALIGNMENT",
+                            "Die-cut": "DIECUT_PECAH"
+                        }
+                        current_error_reason = component_failure_map.get(component_name, "GENERAL_BREAKDOWN")
+                        logger.warning(
+                            f"[SMART-FALLBACK] No error_message from sensor. "
+                            f"Using intelligent default for {component_name}: '{current_error_reason}'"
+                        )
                     
                     logger.info(
-                        f"[SUCCESS] Using REAL cumulative data from simulator | "
-                        f"Production: {total_produksi} pcs | Defects: {produk_cacat} pcs"
+                        f"[DATA] Extracted error reason: '{current_error_reason}' | "
+                        f"Component: {component_name} | "
+                        f"Machine Status: {latest_status.get('machine_status', 'Unknown')}"
                     )
-                    
-                    # Validasi data: jika production = 0, gunakan nilai minimal
-                    if total_produksi == 0:
-                        logger.warning("[WARNING] Cumulative production is 0 (shift just started or machine idle)")
-                        total_produksi = 100  # Minimal untuk prediksi
-                        produk_cacat = 5
-                        logger.info(f"Using minimal values for prediction: Production={total_produksi}, Defects={produk_cacat}")
                 else:
-                    # Fallback: data kumulatif belum tersedia (database belum ada cumulative columns)
-                    logger.warning("[WARNING] Cumulative data not available in database. Using fallback defaults.")
-                    total_produksi = 4000
-                    produk_cacat = 150
+                    logger.warning("[WARNING] No machine status data available. Using component-based fallback.")
+                    # Fallback terakhir jika tidak ada data sama sekali
+                    component_failure_map = {
+                        "Pre-Feeder": "FEEDER_JAM_MECH",
+                        "Feeder": "FEEDER_JAM_ELEC",
+                        "Printing": "PRINT_GHOSTING",
+                        "Slotter": "SLOTTER_MISALIGNMENT",
+                        "Die-cut": "DIECUT_PECAH"
+                    }
+                    current_error_reason = component_failure_map.get(component_name, "GENERAL_BREAKDOWN")
                 
-                input_data = {
-                    "total_produksi": total_produksi,
-                    "produk_cacat": produk_cacat
+                # ====================================================================
+                # EKSTRAK SHIFT DARI SENSOR DATA
+                # ====================================================================
+                # Shift adalah konteks waktu produksi yang mempengaruhi durasi downtime
+                # Sensor bisa mengirimkan 'shift' atau kita gunakan default berdasarkan waktu
+                current_shift = None
+                
+                if latest_status:
+                    # Priority 1: Ambil dari sensor data
+                    current_shift = latest_status.get("shift")
+                    
+                    # Priority 2: Ambil dari field alternatif
+                    if not current_shift:
+                        current_shift = latest_status.get("current_shift")
+                
+                # Priority 3: Default berdasarkan waktu saat ini (jika tidak ada dari sensor)
+                if not current_shift:
+                    from datetime import datetime
+                    current_hour = datetime.now().hour
+                    
+                    if 6 <= current_hour < 14:
+                        current_shift = 1  # Shift Pagi (06:00-14:00)
+                    elif 14 <= current_hour < 22:
+                        current_shift = 2  # Shift Siang (14:00-22:00)
+                    else:
+                        current_shift = 3  # Shift Malam (22:00-06:00)
+                    
+                    logger.info(f"[AUTO-DETECT] Shift detected from time: Shift {current_shift} (Hour: {current_hour})")
+                
+                # Siapkan data untuk model "Murni Fishbone + Shift"
+                # Model membutuhkan 'reason' + 'shift'
+                real_time_data = {
+                    "reason": current_error_reason if current_error_reason else "_NONE_",
+                    "shift": current_shift if current_shift else "_NONE_"
                 }
                 
-                logger.info(f"[AUTO-TRIGGER] Initiating maintenance prediction with input: {input_data}")
+                logger.info(
+                    f"[AUTO-TRIGGER] Initiating downtime prediction | "
+                    f"Reason: '{real_time_data['reason']}' | Shift: {real_time_data['shift']}"
+                )
                 
-                # Panggil fungsi prediksi
-                prediction_result = prediction_service.predict_maintenance_duration(input_data)
+                # Panggil fungsi prediksi (gunakan predict_downtime untuk model Fishbone)
+                prediction_result = prediction_service.predict_downtime(real_time_data)
                 auto_triggered = True
                 
                 # Log hasil prediksi
                 if prediction_result.get('success'):
+                    predicted_minutes = prediction_result.get('prediction', 0)
+                    formatted_duration = prediction_result.get('prediction_formatted', 'N/A')
+                    
                     logger.warning(
                         f"[SUCCESS] AUTO-PREDICTION COMPLETED | "
-                        f"Health Index: {final_health_index} | "
-                        f"Predicted Maintenance Duration: {prediction_result.get('prediction_formatted', 'N/A')} | "
-                        f"Input: Total Produksi={total_produksi}, Produk Cacat={produk_cacat} | "
+                        f"Health Index: {final_health_index:.2f}% | "
+                        f"Error Reason: '{current_error_reason}' | "
+                        f"Shift: {real_time_data.get('shift', 'N/A')} | "
+                        f"Predicted Downtime Duration: {formatted_duration} ({predicted_minutes:.2f} minutes) | "
                         f"RECOMMENDATION: Schedule immediate maintenance!"
                     )
+                    
                 else:
                     logger.error(
                         f"[FAILED] AUTO-PREDICTION FAILED | "
-                        f"Health Index: {final_health_index} | "
+                        f"Health Index: {final_health_index:.2f}% | "
+                        f"Error Reason: '{current_error_reason}' | "
                         f"Error: {prediction_result.get('message', 'Unknown error')}"
                     )
                 
             except Exception as e:
                 logger.error(
                     f"[ERROR] Exception during auto-trigger prediction | "
-                    f"Health Index: {final_health_index} | "
-                    f"Exception: {str(e)}"
+                    f"Health Index: {final_health_index:.2f}% | "
+                    f"Exception: {str(e)}",
+                    exc_info=True
                 )
                 prediction_result = {
                     "success": False,
@@ -522,3 +589,39 @@ class HealthService:
             ISO formatted timestamp
         """
         return datetime.now().isoformat()
+    
+    def _calculate_health_index(self, component_name: str, rpn_value: float, rpn_max: float) -> Dict[str, Any]:
+        """
+        Menghitung health index dan status untuk komponen tertentu.
+        
+        Args:
+            component_name: Nama komponen
+            rpn_value: Nilai RPN komponen saat ini
+            rpn_max: Nilai RPN maksimal
+            
+        Returns:
+            Dictionary berisi health index, status, dan rekomendasi
+        """
+        # Hitung RPN Score
+        rpn_score = self.calculate_rpn_score(rpn_value, rpn_max)
+        
+        # Generate OEE Score
+        oee_data = self.generate_oee_score()
+        oee_score = oee_data["oee_score"]
+        
+        # Hitung Final Health Index
+        final_health_index = self.calculate_final_health_index(rpn_score, oee_score)
+        status = self.determine_health_status(final_health_index)
+        
+        # Generate rekomendasi
+        recommendations = self.generate_rule_based_recommendation(component_name, final_health_index)
+        
+        # Note: Auto-trigger prediction logic sudah dipindahkan ke update_component_health()
+        
+        return {
+            "rpn_score": rpn_score,
+            "oee_score": oee_score,
+            "final_health_index": final_health_index,
+            "status": status,
+            "recommendations": recommendations
+        }

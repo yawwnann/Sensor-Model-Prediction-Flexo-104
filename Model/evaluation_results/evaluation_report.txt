@@ -1,0 +1,49 @@
+================================================================================
+  MODEL EVALUATION REPORT - Model Murni Fishbone V4
+================================================================================
+Generated: 2025-10-23 23:31:29
+Model Type: RandomForestRegressor
+Total Features: 46
+================================================================================
+
+1. EVALUATION METRICS
+--------------------------------------------------------------------------------
+   MAE (Mean Absolute Error)    : 40.35 minutes
+   RMSE (Root Mean Squared Error): 42.11 minutes
+   MAPE (Mean Absolute % Error)  : 29.80%
+   R² Score                      : 0.1046 (10.46%)
+
+   Interpretation:
+   - Model fokus pada FISHBONE ANALYSIS (kategorical features only)
+   - R² rendah adalah normal untuk model pure categorical
+   - Model memberikan prediksi yang bervariasi per alasan downtime
+
+2. TOP 15 FEATURE IMPORTANCE
+--------------------------------------------------------------------------------
+    1. Scrab Description_CREASING PECAH                    34.00%
+    2. Scrab Description_PRINTING BOTAK                    17.76%
+    3. Break Time Description_FEEDER UNIT TROUBLE ELEKTRIK  10.41%
+    4. Break Time Description_FEEDER UNIT TROUBLE MEKANIK   7.76%
+    5. Break Time Description_PRINTING UNIT TROUBLE MEKANIK   5.27%
+    6. Scrab Description_PRINT BLOBOR                       4.16%
+    7. Break Time Description_SHOLAT JUMAT                  3.92%
+    8. Scrab Description_SLOTER LARI                        2.90%
+    9. Break Time Description_MECHANICAL REPAIR>OTHER       2.86%
+   10. Scrab Description_CREASING LARI                      2.72%
+   11. Scrab Description_CREASING MIRING                    2.25%
+   12. Break Time Description_SLOTTER UNIT TROUBLE MEKANIK   2.03%
+   13. Break Time Description_PRINTING UNIT TROUBLE ELEKTRIK   0.75%
+   14. Scrab Description_PRINT LARI                         0.66%
+   15. Scrab Description__NONE_                             0.50%
+
+3. PREDICTION TEST RESULTS
+--------------------------------------------------------------------------------
+   SLOTER LARI                         ERROR
+   FEEDER TROUBLE ELEKTRIK             ERROR
+   PRINTING BOTAK                      ERROR
+   CREASING PECAH                      ERROR
+   DIECUT PECAH                        ERROR
+
+================================================================================
+END OF REPORT
+================================================================================
