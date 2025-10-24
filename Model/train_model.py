@@ -6,8 +6,11 @@ import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.preprocessing import MultiLabelBinarizer
 import joblib
 from datetime import datetime
+import re
+from difflib import SequenceMatcher
 
 # Konstanta untuk perhitungan OEE
 TOTAL_SHIFT_TIME_MINUTES = 480.0  # 8 jam = 480 menit
@@ -148,6 +151,288 @@ FMEA_SEVERITY_MAP = {
 DEFAULT_SEVERITY = 5  # Medium severity sebagai fallback
 
 
+def normalize_text(text: str) -> str:
+    """
+    Normalisasi teks untuk pencocokan:
+    - Uppercase
+    - Hapus spasi ekstra
+    - Hapus karakter non-alfanumerik (kecuali spasi)
+    """
+    if pd.isna(text) or text == '':
+        return ''
+    text = str(text).upper().strip()
+    text = re.sub(r'[^\w\s]', ' ', text)  # Hapus tanda baca
+    text = re.sub(r'\s+', ' ', text)  # Hapus spasi ganda
+    return text
+
+
+def similarity_score(text1: str, text2: str) -> float:
+    """
+    Hitung similarity score antara dua teks (0.0 - 1.0).
+    Menggunakan SequenceMatcher untuk perbandingan string.
+    """
+    if not text1 or not text2:
+        return 0.0
+    return SequenceMatcher(None, text1, text2).ratio()
+
+
+def clean_technician_names(tech_string: str) -> list:
+    """
+    Bersihkan dan parse nama teknisi dari string.
+    Input bisa berisi multiple names separated by newlines.
+    
+    Args:
+        tech_string: String berisi nama teknisi (mungkin dengan \\n)
+        
+    Returns:
+        List nama teknisi yang sudah dibersihkan
+    """
+    if pd.isna(tech_string) or tech_string == '':
+        return []
+    
+    # Split by newline and clean each name
+    names = str(tech_string).split('\n')
+    cleaned_names = []
+    
+    for name in names:
+        name = name.strip().upper()
+        if name and name not in ['', 'NAN', 'NONE']:
+            cleaned_names.append(name)
+    
+    return cleaned_names
+
+
+def load_repair_history(repair_file_path: Path) -> pd.DataFrame:
+    """
+    Memuat data riwayat perbaikan dari CSV.
+    
+    Args:
+        repair_file_path: Path ke file RIWAYAT_PERBAIKAN.csv
+        
+    Returns:
+        DataFrame dengan kolom Date, ISSUE, ACTION PLAN, EKSEKUTOR, dll
+    """
+    try:
+        df = pd.read_csv(repair_file_path, sep=';', encoding='utf-8-sig')
+        
+        # Convert Date to datetime (handle both 'Date' and 'TANGGAL' columns)
+        date_col = 'TANGGAL' if 'TANGGAL' in df.columns else 'Date'
+        df['Date'] = pd.to_datetime(df[date_col], format='%d/%m/%Y', errors='coerce')
+        
+        # Filter hanya FLEXO 104 (if column exists)
+        if 'ITEM UNIT' in df.columns:
+            df = df[df['ITEM UNIT'] == 'FLEXO 104'].copy()
+        
+        # Normalize ISSUE text untuk matching
+        df['ISSUE_NORMALIZED'] = df['ISSUE'].apply(normalize_text)
+        
+        # Clean technician names (handle both 'EKSEKUTOR' and 'TEKNISI' columns)
+        teknisi_col = 'TEKNISI' if 'TEKNISI' in df.columns else 'EKSEKUTOR'
+        df['TEKNISI_LIST'] = df[teknisi_col].apply(clean_technician_names)
+        
+        # Clean ACTION PLAN text (handle both 'ACTION PLAN' and 'ACTION_PLAN' columns)
+        action_col = 'ACTION_PLAN' if 'ACTION_PLAN' in df.columns else 'ACTION PLAN'
+        df['ACTION_PLAN_CLEANED'] = df[action_col].apply(
+            lambda x: normalize_text(x) if pd.notna(x) else ''
+        )
+        
+        # Create binary feature: Ada Spare Part (from SPARE_PART column or ACTION_PLAN text)
+        if 'SPARE_PART' in df.columns:
+            df['HAS_SPARE_PART'] = df['SPARE_PART'].apply(lambda x: 1 if str(x).upper() == 'YA' else 0)
+        else:
+            spare_part_keywords = ['GANTI', 'SPARE', 'PART', 'SPAREPART', 'PENGGANTIAN']
+            df['HAS_SPARE_PART'] = df['ACTION_PLAN_CLEANED'].apply(
+                lambda x: 1 if any(keyword in x for keyword in spare_part_keywords) else 0
+            )
+        
+        print(f"\n✓ Data riwayat perbaikan dimuat: {len(df)} kejadian")
+        print(f"  Periode: {df['Date'].min()} s/d {df['Date'].max()}")
+        
+        # Show technician distribution
+        all_techs = []
+        for tech_list in df['TEKNISI_LIST']:
+            all_techs.extend(tech_list)
+        unique_techs = set(all_techs)
+        print(f"  Jumlah teknisi unik: {len(unique_techs)}")
+        print(f"  Teknisi: {', '.join(sorted(unique_techs)[:10])}{'...' if len(unique_techs) > 10 else ''}")
+        
+        return df
+        
+    except Exception as e:
+        print(f"\n✗ Error memuat riwayat perbaikan: {e}")
+        raise
+
+
+def merge_production_with_repairs(production_df: pd.DataFrame, repair_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Menggabungkan data produksi/downtime dengan data riwayat perbaikan.
+    
+    Strategi:
+    1. Match berdasarkan Date (tanggal yang sama)
+    2. Match berdasarkan similarity deskripsi masalah
+    3. Ambil match terbaik (highest similarity score)
+    
+    Args:
+        production_df: DataFrame data produksi/downtime
+        repair_df: DataFrame riwayat perbaikan
+        
+    Returns:
+        DataFrame yang sudah di-merge dengan kolom repair tambahan
+    """
+    print("\n" + "="*70)
+    print("MERGING DATA PRODUKSI DENGAN RIWAYAT PERBAIKAN")
+    print("="*70)
+    
+    # Create Date column from Posting Date in production data
+    # Try multiple date formats (YYYY-MM-DD is ISO format from CSV)
+    production_df = production_df.copy()
+    
+    if 'Posting Date' in production_df.columns:
+        # First try ISO format (YYYY-MM-DD) which is common in exports
+        production_df['Date'] = pd.to_datetime(
+            production_df['Posting Date'], 
+            format='%Y-%m-%d', 
+            errors='coerce'
+        )
+        
+        # If that failed, try DD/MM/YYYY
+        if production_df['Date'].isna().all():
+            production_df['Date'] = pd.to_datetime(
+                production_df['Posting Date'], 
+                format='%d/%m/%Y', 
+                errors='coerce'
+            )
+    elif 'Start.Date' in production_df.columns:
+        production_df['Date'] = pd.to_datetime(
+            production_df['Start.Date'], 
+            format='%Y-%m-%d', 
+            errors='coerce'
+        )
+        if production_df['Date'].isna().all():
+            production_df['Date'] = pd.to_datetime(
+                production_df['Start.Date'], 
+                format='%d/%m/%Y', 
+                errors='coerce'
+            )
+    else:
+        raise ValueError("Tidak ditemukan kolom tanggal (Posting Date atau Start.Date)")
+    
+    # Extract just the date (without time) for matching
+    production_df['Date'] = production_df['Date'].dt.date
+    
+    print(f"  ✓ Kolom Date dibuat dari production data")
+    
+    # Get date range safely
+    valid_prod_dates = production_df['Date'].dropna()
+    if len(valid_prod_dates) > 0:
+        print(f"  ✓ Range tanggal produksi: {valid_prod_dates.min()} s/d {valid_prod_dates.max()}")
+    else:
+        raise ValueError("Tidak ada tanggal valid di production data!")
+    
+    # Normalize issue descriptions in production data
+    production_df['ISSUE_NORMALIZED_PROD'] = production_df.apply(
+        lambda row: normalize_text(
+            str(row.get('Scrab Description', '')) + ' ' + 
+            str(row.get('Break Time Description', ''))
+        ),
+        axis=1
+    )
+    
+    # Prepare repair data for merge
+    repair_merge_cols = [
+        'Date', 'ISSUE', 'ISSUE_NORMALIZED', 'ACTION_PLAN_CLEANED', 
+        'TEKNISI_LIST', 'HAS_SPARE_PART'
+    ]
+    repair_for_merge = repair_df[repair_merge_cols].copy()
+    
+    # Convert repair Date to date only (no time)
+    repair_for_merge['Date'] = pd.to_datetime(repair_for_merge['Date']).dt.date
+    
+    # Show repair date range
+    print(f"  ✓ Repair data date range: {repair_for_merge['Date'].min()} s/d {repair_for_merge['Date'].max()}")
+    
+    # Find overlapping dates
+    prod_dates = set(production_df['Date'].dropna())
+    repair_dates = set(repair_for_merge['Date'].dropna())
+    overlap_dates = prod_dates & repair_dates
+    
+    print(f"  ✓ Production unique dates: {len(prod_dates)}")
+    print(f"  ✓ Repair unique dates: {len(repair_dates)}")
+    print(f"  ✓ Overlapping dates: {len(overlap_dates)}")
+    
+    if len(overlap_dates) > 0:
+        print(f"  ✓ Contoh tanggal yang overlap: {sorted(list(overlap_dates))[:5]}")
+    else:
+        print(f"  ⚠ PERINGATAN: Tidak ada tanggal yang overlap!")
+        print(f"  ⚠ Ini berarti data repair tidak akan ter-merge dengan production data")
+    
+    # Merge by Date (left join to keep all production data)
+    print(f"\n→ Step 1: Merge berdasarkan Date...")
+    merged = production_df.merge(
+        repair_for_merge,
+        on='Date',
+        how='left',
+        suffixes=('', '_REPAIR')
+    )
+    
+    print(f"  ✓ Total rows after date merge: {len(merged)}")
+    
+    # For rows with multiple repair matches on same date, pick best match based on text similarity
+    print(f"\n→ Step 2: Mencocokkan berdasarkan similarity deskripsi...")
+    
+    def find_best_repair_match(group):
+        """Find best matching repair record for this production record"""
+        if len(group) == 1:
+            return group.iloc[0]
+        
+        # Calculate similarity scores
+        prod_issue = group.iloc[0]['ISSUE_NORMALIZED_PROD']
+        best_idx = 0
+        best_score = 0.0
+        
+        for idx, row in group.iterrows():
+            repair_issue = row['ISSUE_NORMALIZED']
+            if pd.notna(repair_issue):
+                score = similarity_score(prod_issue, repair_issue)
+                if score > best_score:
+                    best_score = score
+                    best_idx = group.index.get_loc(idx)
+        
+        return group.iloc[best_idx]
+    
+    # Group by original production row index and pick best match
+    # (This handles duplicate rows created by merge when multiple repairs on same date)
+    original_indices = production_df.index
+    merged['ORIGINAL_IDX'] = merged.index % len(production_df)
+    
+    # Keep only best match for each production row
+    merged_best = merged.groupby('ORIGINAL_IDX', group_keys=False).apply(find_best_repair_match)
+    merged_best = merged_best.drop(columns=['ORIGINAL_IDX'])
+    
+    # Count successful matches
+    matched_count = merged_best['ISSUE'].notna().sum()
+    match_rate = (matched_count / len(merged_best)) * 100
+    
+    print(f"  ✓ Berhasil match: {matched_count}/{len(merged_best)} baris ({match_rate:.1f}%)")
+    print(f"  ✓ Rows dengan data repair: {matched_count}")
+    print(f"  ✓ Rows tanpa data repair: {len(merged_best) - matched_count}")
+    
+    # Fill missing repair data with defaults
+    print(f"\n→ Step 3: Mengisi nilai default untuk rows tanpa match...")
+    
+    # For rows without repair match, set default values
+    merged_best['TEKNISI_LIST'] = merged_best['TEKNISI_LIST'].apply(
+        lambda x: x if isinstance(x, list) else []
+    )
+    merged_best['HAS_SPARE_PART'] = merged_best['HAS_SPARE_PART'].fillna(0).astype(int)
+    merged_best['ACTION_PLAN_CLEANED'] = merged_best['ACTION_PLAN_CLEANED'].fillna('UNKNOWN')
+    
+    print(f"  ✓ Nilai default diterapkan")
+    print("="*70)
+    
+    return merged_best
+
+
 def sort_files_by_month(files: list) -> list:
     """
     Mengurutkan file berdasarkan bulan dari September 2024 hingga September 2025.
@@ -273,7 +558,10 @@ def preprocess_for_machine(df: pd.DataFrame, work_center: str = "C_FL104") -> pd
     1. Mapping kolom dasar
     2. Perhitungan fitur OEE (Quality Rate & Availability Rate)
     3. One-hot encoding fitur kategorikal (Scrab Description & Break Time Description)
-    4. FMEA Severity scoring (FITUR BARU)
+    4. FMEA Severity scoring
+    5. **[BARU]** Teknisi encoding (MultiLabelBinarizer)
+    6. **[BARU]** Action Plan encoding (One-hot atau TF-IDF)
+    7. **[BARU]** Spare Part feature (binary)
     
     Mapping kolom dari nama asli ke nama yang diharapkan:
     - Work Center -> Work Center (tetap sama)
@@ -429,6 +717,96 @@ def preprocess_for_machine(df: pd.DataFrame, work_center: str = "C_FL104") -> pd
         print(f"       Severity {int(sev)}: {count} kejadian ({percentage:.1f}%)")
     
     # ========================================================================
+    # FEATURE ENGINEERING BARU: TEKNISI (MultiLabelBinarizer)
+    # ========================================================================
+    print("\n  → Encoding fitur TEKNISI (dari riwayat perbaikan)...")
+    
+    if 'TEKNISI_LIST' in filtered.columns:
+        # MultiLabelBinarizer untuk multiple technicians per incident
+        mlb = MultiLabelBinarizer()
+        teknisi_encoded = mlb.fit_transform(filtered['TEKNISI_LIST'])
+        
+        # Create DataFrame with technician columns
+        teknisi_cols = [f'TEKNISI_{name}' for name in mlb.classes_]
+        teknisi_df = pd.DataFrame(
+            teknisi_encoded, 
+            columns=teknisi_cols,
+            index=filtered.index
+        )
+        
+        # Merge with main dataframe
+        filtered = pd.concat([filtered, teknisi_df], axis=1)
+        
+        print(f"     ✓ Jumlah teknisi unik: {len(mlb.classes_)}")
+        print(f"     ✓ Fitur teknisi dibuat: {len(teknisi_cols)} kolom")
+        if len(mlb.classes_) > 0:
+            print(f"     ✓ Contoh teknisi: {', '.join(list(mlb.classes_)[:5])}")
+        
+        # Count rows with technician data
+        rows_with_tech = (filtered[teknisi_cols].sum(axis=1) > 0).sum()
+        tech_coverage = (rows_with_tech / len(filtered)) * 100
+        print(f"     ✓ Rows dengan data teknisi: {rows_with_tech}/{len(filtered)} ({tech_coverage:.1f}%)")
+    else:
+        print(f"     ⚠ Kolom TEKNISI_LIST tidak ditemukan (skip technician encoding)")
+    
+    # ========================================================================
+    # FEATURE ENGINEERING BARU: ACTION PLAN (One-Hot Encoding)
+    # ========================================================================
+    print("\n  → Encoding fitur ACTION PLAN...")
+    
+    if 'ACTION_PLAN_CLEANED' in filtered.columns:
+        # Get top N most common action plans (to limit feature explosion)
+        TOP_N_ACTIONS = 20
+        
+        # Count action plan frequencies
+        action_counts = filtered['ACTION_PLAN_CLEANED'].value_counts()
+        top_actions = action_counts.head(TOP_N_ACTIONS).index.tolist()
+        
+        # Create binary columns for top actions
+        for action in top_actions:
+            if action and action != 'UNKNOWN':
+                # Create safe column name
+                col_name = f'ACTION_{action[:30]}'.replace(' ', '_')
+                filtered[col_name] = (filtered['ACTION_PLAN_CLEANED'] == action).astype(int)
+        
+        action_feature_count = len([col for col in filtered.columns if col.startswith('ACTION_')])
+        print(f"     ✓ Top {TOP_N_ACTIONS} action plans digunakan")
+        print(f"     ✓ Fitur action plan dibuat: {action_feature_count} kolom")
+        
+        # Show coverage
+        rows_with_action = (filtered['ACTION_PLAN_CLEANED'] != 'UNKNOWN').sum()
+        action_coverage = (rows_with_action / len(filtered)) * 100
+        print(f"     ✓ Rows dengan action plan: {rows_with_action}/{len(filtered)} ({action_coverage:.1f}%)")
+        
+        # Show top 5 actions
+        if len(top_actions) > 0:
+            print(f"     ✓ Top 5 actions:")
+            for i, action in enumerate(top_actions[:5], 1):
+                count = action_counts[action]
+                print(f"        {i}. {action[:50]}... ({count} kejadian)")
+    else:
+        print(f"     ⚠ Kolom ACTION_PLAN_CLEANED tidak ditemukan (skip action encoding)")
+    
+    # ========================================================================
+    # FEATURE ENGINEERING BARU: SPARE PART (Binary Feature)
+    # ========================================================================
+    print("\n  → Menambahkan fitur SPARE PART...")
+    
+    if 'HAS_SPARE_PART' in filtered.columns:
+        # Ensure it's integer type
+        filtered['HAS_SPARE_PART'] = filtered['HAS_SPARE_PART'].fillna(0).astype(int)
+        
+        spare_part_count = filtered['HAS_SPARE_PART'].sum()
+        spare_part_pct = (spare_part_count / len(filtered)) * 100
+        
+        print(f"     ✓ Fitur HAS_SPARE_PART ditambahkan")
+        print(f"     ✓ Kejadian dengan spare part: {spare_part_count}/{len(filtered)} ({spare_part_pct:.1f}%)")
+    else:
+        # Create dummy column if not exists
+        filtered['HAS_SPARE_PART'] = 0
+        print(f"     ⚠ Kolom HAS_SPARE_PART tidak ditemukan, menggunakan nilai default 0")
+    
+    # ========================================================================
     # FEATURE ENGINEERING: One-Hot Encoding Fitur Kategorikal (Fishbone + Shift)
     # ========================================================================
     print("\n  → Melakukan one-hot encoding fitur kategorikal (Fishbone Analysis + Shift)...")
@@ -491,8 +869,8 @@ def train_and_save_model(df: pd.DataFrame, model_path: Path = Path("model.pkl"))
     # Target (y): Waktu Downtime
     y = df["Waktu Downtime (Menit)"]
     
-    # Fitur (X): Fitur kategorikal "Fishbone + Shift" + FMEA Severity (alasan + konteks + keparahan)
-    # Model "Fishbone + Shift + FMEA" - Menghapus SEMUA fitur produksi untuk mencegah kebocoran data
+    # Fitur (X): Fitur kategorikal "Fishbone + Shift" + FMEA Severity + TEKNISI + ACTION PLAN
+    # Model "Enhanced" - Menghapus SEMUA fitur produksi untuk mencegah kebocoran data
     features_to_drop = [
         'Waktu Downtime (Menit)',   # Target variable
         'Work Center',               # Sudah difilter, tidak informatif
@@ -506,11 +884,24 @@ def train_and_save_model(df: pd.DataFrame, model_path: Path = Path("model.pkl"))
         'Quality_Rate',              # Dihitung dari produksi (kebocoran data)
         'Availability_Rate',         # Dihitung dari target variable (kebocoran data)
         
+        # === KOLOM DARI RIWAYAT PERBAIKAN (raw data, sudah di-encode) ===
+        'Date',                      # Tanggal (sudah digunakan untuk merge)
+        'ISSUE',                     # Raw issue text (sudah dinormalisasi)
+        'ISSUE_NORMALIZED',          # Normalized issue (untuk matching)
+        'ISSUE_NORMALIZED_PROD',     # Normalized production issue
+        'ACTION PLAN',               # Raw action plan (sudah di-encode)
+        'ACTION_PLAN_CLEANED',       # Cleaned action plan (sudah di-encode)
+        'TEKNISI_LIST',              # List teknisi (sudah di-encode dengan MLB)
+        'EKSEKUTOR',                 # Raw executor names
+        'PELAKSANA PERBAIKAN',       # Raw technician names
+        'REMARK',                    # Remark text (tidak informatif)
+        'ITEM UNIT',                 # Already filtered to FLEXO 104
+        'IMPACT',                    # Impact text (redundant with severity)
+        
         # Kolom non-numerik lainnya yang harus dibuang
         'Posting Date',
         'Machine',
         'Group', 
-        'Shift',
         'Prod Order',
         'Confirm KG',
         'Act Confirm KG',
@@ -540,18 +931,23 @@ def train_and_save_model(df: pd.DataFrame, model_path: Path = Path("model.pkl"))
     
     # Kategorikan fitur untuk tampilan yang lebih rapi
     base_features = [col for col in X.columns if not any(
-        col.startswith(prefix) for prefix in ['Scrab Description_', 'Break Time Description_', 'Shift_']
+        col.startswith(prefix) for prefix in [
+            'Scrab Description_', 'Break Time Description_', 'Shift_',
+            'TEKNISI_', 'ACTION_'
+        ]
     )]
     scrab_features = [col for col in X.columns if col.startswith('Scrab Description_')]
     break_features = [col for col in X.columns if col.startswith('Break Time Description_')]
     shift_features = [col for col in X.columns if col.startswith('Shift_')]
+    teknisi_features = [col for col in X.columns if col.startswith('TEKNISI_')]
+    action_features = [col for col in X.columns if col.startswith('ACTION_')]
     
     print(f"\n  A. Fitur Numerik Dasar ({len(base_features)} fitur):")
     if len(base_features) > 0:
         for feat in base_features:
             print(f"     - {feat}")
     else:
-        print(f"     ⚠ TIDAK ADA (Model Murni Fishbone)")
+        print(f"     ⚠ TIDAK ADA (Model Murni Kategorikal)")
     
     print(f"\n  B. Fitur Kategorikal 'Scrab Description' ({len(scrab_features)} fitur):")
     if len(scrab_features) <= 10:
@@ -574,6 +970,28 @@ def train_and_save_model(df: pd.DataFrame, model_path: Path = Path("model.pkl"))
     print(f"\n  D. Fitur Kategorikal 'Shift' ({len(shift_features)} fitur):")
     for feat in shift_features:
         print(f"     - {feat}")
+    
+    print(f"\n  E. **[BARU]** Fitur 'TEKNISI' ({len(teknisi_features)} fitur):")
+    if len(teknisi_features) == 0:
+        print(f"     ⚠ TIDAK ADA (data riwayat perbaikan tidak tersedia)")
+    elif len(teknisi_features) <= 10:
+        for feat in teknisi_features:
+            print(f"     - {feat}")
+    else:
+        for feat in teknisi_features[:5]:
+            print(f"     - {feat}")
+        print(f"     ... dan {len(teknisi_features) - 5} teknisi lainnya")
+    
+    print(f"\n  F. **[BARU]** Fitur 'ACTION PLAN' ({len(action_features)} fitur):")
+    if len(action_features) == 0:
+        print(f"     ⚠ TIDAK ADA (data riwayat perbaikan tidak tersedia)")
+    elif len(action_features) <= 10:
+        for feat in action_features:
+            print(f"     - {feat}")
+    else:
+        for feat in action_features[:5]:
+            print(f"     - {feat}")
+        print(f"     ... dan {len(action_features) - 5} action plan lainnya")
     
     # ========================================================================
     # TAHAP EVALUASI MODEL (Train-Test Split)
@@ -707,7 +1125,13 @@ def train_and_save_model(df: pd.DataFrame, model_path: Path = Path("model.pkl"))
     print(f"RMSE  : {rmse:.4f} menit")
     print(f"MAPE  : {mape:.4f}%")
     print(f"R²    : {r2_score:.4f}")
-    print(f"Fitur : {len(X.columns)} fitur (Fishbone + Shift + FMEA Severity)")
+    print(f"\nKomposisi Fitur ({len(X.columns)} total):")
+    print(f"  • Fishbone Analysis: {len(scrab_features) + len(break_features)} fitur")
+    print(f"  • Shift: {len(shift_features)} fitur")
+    print(f"  • FMEA Severity: {'FMEA_Severity' in X.columns}")
+    print(f"  • Teknisi: {len(teknisi_features)} fitur")
+    print(f"  • Action Plan: {len(action_features)} fitur")
+    print(f"  • Spare Part: {'HAS_SPARE_PART' in X.columns}")
     print("="*70)
 
 
@@ -715,28 +1139,80 @@ def main():
     """Fungsi utama untuk menjalankan seluruh proses."""
     base_dir = Path(__file__).resolve().parent
     data_dir = base_dir.parent / "Data Flexo CSV"
+    repair_file_path = base_dir / "RIWAYAT_PERBAIKAN_REALISTIC.csv"  # Using realistic synthetic data
     model_output_path = base_dir / "model.pkl"
 
     try:
-        print("Mulai proses training model...\n")
-        print("💡 Model 'Fishbone + Shift + FMEA' - Menambahkan skor keparahan ke prediksi")
+        print("="*70)
+        print("TRAINING MODEL DENGAN DATA RIWAYAT PERBAIKAN (ENHANCED)")
+        print("="*70)
+        print("Model Enhanced: Fishbone + Shift + FMEA + Teknisi + Action Plan")
+        print("="*70)
+        
+        # ====================================================================
+        # STEP 1: LOAD DATA PRODUKSI BULANAN
+        # ====================================================================
+        print("\n[STEP 1] Memuat data produksi bulanan...")
         print("Memuat file CSV (urutan: September 2024 - September 2025):")
         combined_df, file_count = load_and_concat_csv(data_dir)
         print(f"\n✓ Berhasil memuat dan menggabungkan {file_count} file CSV.")
         print(f"  Total baris data: {len(combined_df)}")
         
-        print(f"\nMemfilter data untuk Work Center C_FL104...")
-        processed_df = preprocess_for_machine(combined_df, work_center="C_FL104")
-        print(f"✓ Data untuk C_FL104 ditemukan: {len(processed_df)} baris.")
+        # ====================================================================
+        # STEP 2: LOAD DATA RIWAYAT PERBAIKAN
+        # ====================================================================
+        print("\n[STEP 2] Memuat data riwayat perbaikan...")
         
-        print(f"\nMelatih model RandomForestRegressor dengan fitur Fishbone + Shift + FMEA Severity...")
+        if not repair_file_path.exists():
+            print(f"\n⚠ WARNING: File riwayat perbaikan tidak ditemukan di: {repair_file_path}")
+            print(f"⚠ Model akan dilatih TANPA fitur teknisi dan action plan")
+            print(f"⚠ Untuk hasil optimal, pastikan file RIWAYAT_PERBAIKAN.csv tersedia\n")
+            df_merged = combined_df
+        else:
+            repair_df = load_repair_history(repair_file_path)
+            
+            # ================================================================
+            # STEP 3: MERGE DATA PRODUKSI DENGAN RIWAYAT PERBAIKAN
+            # ================================================================
+            print("\n[STEP 3] Menggabungkan data produksi dengan riwayat perbaikan...")
+            df_merged = merge_production_with_repairs(combined_df, repair_df)
+            print(f"\n✓ Data berhasil digabungkan: {len(df_merged)} baris")
+        
+        # ====================================================================
+        # STEP 4: PREPROCESSING DAN FEATURE ENGINEERING
+        # ====================================================================
+        print("\n[STEP 4] Preprocessing dan Feature Engineering...")
+        print(f"Memfilter data untuk Work Center C_FL104...")
+        processed_df = preprocess_for_machine(df_merged, work_center="C_FL104")
+        print(f"\n✓ Data untuk C_FL104 ditemukan: {len(processed_df)} baris.")
+        
+        # ====================================================================
+        # STEP 5: TRAINING MODEL
+        # ====================================================================
+        print("\n[STEP 5] Training Model RandomForestRegressor...")
+        print(f"Model Enhanced dengan fitur:")
+        print(f"  • Fishbone Analysis (Scrab & Break Time Description)")
+        print(f"  • Shift Information")
+        print(f"  • FMEA Severity Score")
+        print(f"  • Teknisi (dari riwayat perbaikan)")
+        print(f"  • Action Plan (dari riwayat perbaikan)")
+        print(f"  • Spare Part Usage (binary feature)")
+        print("")
+        
         train_and_save_model(processed_df, model_path=model_output_path)
-        print(f"\n✓ Model untuk C_FL104 berhasil dilatih dari {file_count} file dan disimpan sebagai model.pkl")
-        print(f"✓ Fitur FMEA Severity Score berhasil ditambahkan (skor keparahan 1-10)")
-        print(f"✓ Model sekarang memahami tingkat keparahan setiap jenis downtime")
+        
+        print("\n" + "="*70)
+        print("✓ MODEL TRAINING SELESAI!")
+        print("="*70)
+        print(f"✓ Model untuk C_FL104 berhasil dilatih dan disimpan sebagai model.pkl")
+        print(f"✓ Sumber data: {file_count} file CSV produksi + riwayat perbaikan")
+        print(f"✓ Total fitur enhanced tersedia untuk prediksi yang lebih akurat")
+        print("="*70)
         
     except Exception as e:
-        print(f"\n✗ Error: Gagal melatih model. Pesan: {e}")
+        print(f"\nError: Gagal melatih model. Pesan: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 
