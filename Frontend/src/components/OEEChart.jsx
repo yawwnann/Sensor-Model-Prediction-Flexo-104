@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import {
   BarChart,
   Bar,
@@ -13,7 +13,28 @@ import {
 } from "recharts";
 import { TrendingUp, BarChart3 } from "lucide-react";
 
-const OEEChart = ({ componentsData, oeeHistory }) => {
+const OEEChart = ({ componentsData, oeeHistory, timestamps }) => {
+  // Safety check - return loading state if data not ready
+  if (!componentsData || Object.keys(componentsData).length === 0) {
+    return (
+      <section className="mb-8">
+        <div className="bg-white rounded-xl shadow-md p-6 border border-slate-200">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="bg-blue-100 p-2 rounded-lg">
+              <BarChart3 className="w-5 h-5 text-blue-600" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900">
+              OEE Performance Metrics
+            </h2>
+          </div>
+          <div className="flex items-center justify-center h-64 text-slate-500">
+            <p>Loading OEE data...</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   // Prepare data for bar chart (OEE components by machine component)
   const barChartData = Object.entries(componentsData)
     .filter(([, data]) => !data.error)
@@ -28,14 +49,20 @@ const OEEChart = ({ componentsData, oeeHistory }) => {
       };
     });
 
+  // If no bar chart data, show placeholder message instead of empty chart
+  const hasBarData = barChartData.length > 0 && barChartData.some(d => d.OEE > 0);
+
   // Prepare data for line chart (OEE trend over time)
-  const lineChartData = oeeHistory.map((point, index) => ({
-    time: index,
-    OEE: point.oee || 0,
-    Availability: point.availability || 0,
-    Performance: point.performance || 0,
-    Quality: point.quality || 0,
-  }));
+  const lineChartData = (oeeHistory && oeeHistory.length > 0) 
+    ? oeeHistory.map((point, index) => ({
+        time: `T${index + 1}`,
+        timeIndex: index + 1,
+        OEE: point.oee || 0,
+        Availability: point.availability || 0,
+        Performance: point.performance || 0,
+        Quality: point.quality || 0,
+      }))
+    : [];
 
   // Calculate overall OEE metrics
   const calculateOverallMetric = (metricKey) => {
@@ -70,17 +97,28 @@ const OEEChart = ({ componentsData, oeeHistory }) => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* OEE Component Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <OEECard
-          title="Overall OEE"
-          value={overallOEE}
-          color="bg-blue-50 border-blue-200 text-blue-600"
-        />
-        <OEECard
-          title="Availability"
-          value={overallAvailability}
+    <div className="bg-white rounded-xl shadow-md p-6 border border-slate-200">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="bg-blue-100 p-2 rounded-lg">
+          <BarChart3 className="w-5 h-5 text-blue-600" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-900">
+          OEE (Overall Equipment Effectiveness)
+        </h2>
+      </div>
+
+      <div className="space-y-6">
+        {/* OEE Component Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <OEECard
+            title="Overall OEE"
+            value={overallOEE}
+            color="bg-blue-50 border-blue-200 text-blue-600"
+          />
+          <OEECard
+            title="Availability"
+            value={overallAvailability}
           color="bg-emerald-50 border-emerald-200 text-emerald-600"
         />
         <OEECard
@@ -145,7 +183,7 @@ const OEEChart = ({ componentsData, oeeHistory }) => {
       </div>
 
       {/* Line Chart - OEE Trend */}
-      {lineChartData.length > 0 && (
+      {lineChartData.length > 0 ? (
         <div className="bg-white rounded-lg shadow-sm p-6 border border-slate-200">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp className="w-5 h-5 text-blue-600" />
@@ -205,6 +243,18 @@ const OEEChart = ({ componentsData, oeeHistory }) => {
               />
             </LineChart>
           </ResponsiveContainer>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-slate-200">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="w-5 h-5 text-blue-600" />
+            <h3 className="text-lg font-semibold text-slate-800">
+              OEE Trend Over Time
+            </h3>
+          </div>
+          <div className="flex items-center justify-center h-64 text-slate-500">
+            <p>Collecting trend data... Please wait for auto-refresh to populate the chart.</p>
+          </div>
         </div>
       )}
 
@@ -269,6 +319,7 @@ const OEEChart = ({ componentsData, oeeHistory }) => {
             </ul>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

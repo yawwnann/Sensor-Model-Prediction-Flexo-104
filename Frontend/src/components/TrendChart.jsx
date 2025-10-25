@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import {
   LineChart,
   Line,
@@ -12,11 +12,32 @@ import {
 import { TrendingUp } from "lucide-react";
 
 const TrendChart = ({ healthHistory, timestamps }) => {
+  // Safety check
+  if (!healthHistory || !timestamps || timestamps.length === 0) {
+    return (
+      <section className="mb-8">
+        <div className="bg-white rounded-xl shadow-md p-6 border border-slate-200">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="bg-green-100 p-2 rounded-lg">
+              <TrendingUp className="w-5 h-5 text-green-600" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900">
+              Health Index Trend
+            </h2>
+          </div>
+          <div className="flex items-center justify-center h-64 text-slate-500">
+            <p>Collecting trend data... Please wait for auto-refresh to populate the chart.</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   // Prepare data for line chart
   const chartData = timestamps.map((timestamp, index) => {
     const dataPoint = {
       time: timestamp,
-      timeLabel: `T-${timestamps.length - index}`,
+      timeLabel: `T${index + 1}`,
     };
 
     // Add each component's health data

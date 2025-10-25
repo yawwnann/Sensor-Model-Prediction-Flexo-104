@@ -1,7 +1,24 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 
-// FMEA Static Data
+/**
+ * FMEATable Component
+ * 
+ * Failure Mode and Effects Analysis (FMEA) Table
+ * 
+ * Menampilkan analisis FMEA per komponen untuk:
+ * - Identifikasi failure modes
+ * - Risk assessment (RPN = Severity × Occurrence × Detection)
+ * - Recommended actions
+ * 
+ * Note: FMEA digunakan untuk analisis risiko per komponen,
+ * namun maintenance prediction tetap untuk KESELURUHAN MESIN C_FL104
+ * 
+ * Data FMEA static berdasarkan expert knowledge dan historical data
+ */
+
+// FMEA Static Data - Based on historical failures and expert analysis
+// Data ini berdasarkan analisis historis mesin Flexo C_FL104
 const FMEA_DATA = {
   "Pre-Feeder": {
     rpn: 280,
@@ -111,8 +128,11 @@ const FMEA_DATA = {
 };
 
 const FMEATable = ({ components }) => {
+  // Safety check for components
+  const safeComponents = components && components.length > 0 ? components : ["Pre-Feeder", "Feeder", "Printing", "Slotter", "Stacker"];
+  
   const [selectedComponent, setSelectedComponent] = useState(
-    components[0] || "Pre-Feeder"
+    safeComponents[0] || "Pre-Feeder"
   );
   const [expandedRows, setExpandedRows] = useState([]);
 
@@ -157,7 +177,7 @@ const FMEATable = ({ components }) => {
           onChange={(e) => setSelectedComponent(e.target.value)}
           className="w-full md:w-64 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
-          {components.map((comp) => (
+          {safeComponents.map((comp) => (
             <option key={comp} value={comp}>
               {comp}
             </option>

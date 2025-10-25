@@ -1,0 +1,590 @@
+import axios from "axios";import axios from "axios";
+
+
+
+/**/**
+
+ * API Service for Digital Twin Flexo Machine * API Service for Digital Twin Flexo Machine
+
+ * Base URL: http://localhost:5000/api * Base URL: http://localhost:5000/api
+
+ *  * 
+
+ * Endpoints Overview: * Endpoints:
+
+ * - Health Monitoring: /health/machine, /health/components, /health/{componentName} * - Health Monitoring: /health/machine, /health/components, /health/{componentName}
+
+ * - Sensor Data: /sensor/latest, /sensor/history * - Sensor Data: /sensor/latest, /sensor/history
+
+ * - Prediction: /predict/maintenance, /predict/history * - Prediction: /predict/maintenance, /predict/history
+
+ * - System Info: /info * - System Info: /info
+
+ */ */
+
+
+
+const BASE_URL = "http://localhost:5000/api";const BASE_URL = "http://localhost:5000/api";
+
+
+
+// Create axios instance with default config// Create axios instance with default config
+
+const apiClient = axios.create({const apiClient = axios.create({
+
+  baseURL: BASE_URL,  baseURL: BASE_URL,
+
+  headers: {  headers: {
+
+    "Content-Type": "application/json",    "Content-Type": "application/json",
+
+  },  },
+
+  timeout: 10000, // 10 seconds  timeout: 10000, // 10 seconds
+
+});});
+
+
+
+// Add request interceptor for logging// Add request interceptor for logging
+
+apiClient.interceptors.request.use(apiClient.interceptors.request.use(
+
+  (config) => {  (config) => {
+
+    console.log(`[API Request] ${config.method.toUpperCase()} ${config.url}`);    console.log(`[API Request] ${config.method.toUpperCase()} ${config.url}`);
+
+    return config;    return config;
+
+  },  },
+
+  (error) => {  (error) => {
+
+    return Promise.reject(error);    return Promise.reject(error);
+
+  }  }
+
+););
+
+
+
+// Add response interceptor for error handling// Add response interceptor for error handling
+
+apiClient.interceptors.response.use(apiClient.interceptors.response.use(
+
+  (response) => {  (response) => {
+
+    console.log(`[API Response] ${response.status} ${response.config.url}`);    console.log(`[API Response] ${response.status} ${response.config.url}`);
+
+    return response;    return response;
+
+  },  },
+
+  (error) => {  (error) => {
+
+    console.error("[API Error]", error.response?.data || error.message);    console.error("[API Error]", error.response?.data || error.message);
+
+    return Promise.reject(error);    return Promise.reject(error);
+
+  }  }
+
+););
+
+
+
+// ============================================================================/**
+
+// HEALTH MONITORING ENDPOINTS * Fetch health data for a specific component
+
+// ============================================================================ * Endpoint: GET /api/health/{componentName}
+
+ * @param {string} componentName - Name of the component (e.g., "Pre-Feeder", "Feeder", "Printing", "Slotter", "Stacker")
+
+/** * @returns {Promise<Object>} Component health data
+
+ * Fetch health data for a specific component * Response includes: health_index, status, description, metrics, auto_prediction, recommendations
+
+ * Endpoint: GET /api/health/{componentName} */
+
+ * export const fetchComponentHealth = async (componentName) => {
+
+ * @param {string} componentName - Name of the component  try {
+
+ *   Options: "Pre-Feeder", "Feeder", "Printing", "Slotter", "Stacker"    const response = await apiClient.get(`/health/${componentName}`);
+
+ * @returns {Promise<Object>} Component health data    return {
+
+ *       success: true,
+
+ * Response includes:      data: response.data,
+
+ *   - health_index: 0-100 score    };
+
+ *   - status: "Good", "Warning", "Degraded", "Critical"  } catch (error) {
+
+ *   - description: Status description    return {
+
+ *   - metrics: { oee_score, availability_rate, performance_rate, quality_rate }      success: false,
+
+ *   - auto_prediction: Auto-prediction results if triggered      error:
+
+ *   - recommendations: Array of maintenance recommendations        error.response?.data?.error ||
+
+ */        error.message ||
+
+export const fetchComponentHealth = async (componentName) => {        "Failed to fetch component health",
+
+  try {    };
+
+    const response = await apiClient.get(`/health/${componentName}`);  }
+
+    return {};
+
+      success: true,
+
+      data: response.data,/**
+
+    }; * Fetch overall machine health with auto-prediction
+
+  } catch (error) { * Endpoint: GET /api/health/machine
+
+    return { * @returns {Promise<Object>} Machine health data including auto-prediction results
+
+      success: false, * Auto-triggers prediction when overall_health < 40%
+
+      error: */
+
+        error.response?.data?.error ||export const fetchMachineHealth = async () => {
+
+        error.message ||  try {
+
+        "Failed to fetch component health",    const response = await apiClient.get("/health/machine");
+
+    };    return {
+
+  }      success: true,
+
+};      data: response.data,
+
+    };
+
+/**  } catch (error) {
+
+ * Fetch overall machine health with auto-prediction    return {
+
+ * Endpoint: GET /api/health/machine      success: false,
+
+ *       error:
+
+ * @returns {Promise<Object>} Machine health data including auto-prediction        error.response?.data?.error ||
+
+ *         error.message ||
+
+ * Features:        "Failed to fetch machine health",
+
+ *   - Auto-triggers prediction when overall_health < 40%    };
+
+ *   - Returns maintenance duration prediction  }
+
+ *   - Includes confidence score and recommendations};
+
+ * 
+
+ * Response includes:/**
+
+ *   - machine_id: "C_FL104" * Fetch health data for all components
+
+ *   - overall_health: 0-100 score * Endpoint: GET /api/health/components
+
+ *   - status: Overall machine status * @returns {Promise<Object>} All components health data with overall health
+
+ *   - auto_prediction_triggered: boolean */
+
+ *   - prediction_result: { estimated_duration, confidence, recommendations }export const fetchAllComponentsHealth = async (components) => {
+
+ */  try {
+
+export const fetchMachineHealth = async () => {    // If components array provided, fetch individually for compatibility
+
+  try {    if (components && components.length > 0) {
+
+    const response = await apiClient.get("/health/machine");      const promises = components.map((component) =>
+
+    return {        fetchComponentHealth(component)
+
+      success: true,      );
+
+      data: response.data,
+
+    };      const results = await Promise.allSettled(promises);
+
+  } catch (error) {
+
+    return {      const healthData = {};
+
+      success: false,      components.forEach((component, index) => {
+
+      error:        const result = results[index];
+
+        error.response?.data?.error ||        if (result.status === "fulfilled" && result.value.success) {
+
+        error.message ||          healthData[component] = result.value.data;
+
+        "Failed to fetch machine health",        } else {
+
+    };          healthData[component] = {
+
+  }            error: result.reason?.message || "Failed to fetch data",
+
+};          };
+
+        }
+
+/**      });
+
+ * Fetch health data for all components
+
+ * Endpoint: GET /api/health/components OR individual fetches      return healthData;
+
+ *     }
+
+ * @param {string[]} components - Array of component names
+
+ * @returns {Promise<Object>} Object with component names as keys    // Otherwise use the components endpoint
+
+ *     const response = await apiClient.get("/health/components");
+
+ * Usage:    return response.data.components || {};
+
+ *   const healthData = await fetchAllComponentsHealth([  } catch (error) {
+
+ *     "Pre-Feeder", "Feeder", "Printing", "Slotter", "Stacker"    console.error("Error fetching all components:", error);
+
+ *   ]);    throw error;
+
+ *   // Returns: { "Pre-Feeder": {...}, "Feeder": {...}, ... }  }
+
+ */};
+
+export const fetchAllComponentsHealth = async (components) => {
+
+  try {/**
+
+    // Fetch individually for better error handling per component * Fetch latest sensor data from MQTT
+
+    const promises = components.map((component) => * Endpoint: GET /api/sensor/latest
+
+      fetchComponentHealth(component) * @returns {Promise<Object>} Latest sensor readings
+
+    ); */
+
+export const fetchLatestSensorData = async () => {
+
+    const results = await Promise.allSettled(promises);  try {
+
+    const response = await apiClient.get("/sensor/latest");
+
+    const healthData = {};    return {
+
+    components.forEach((component, index) => {      success: true,
+
+      const result = results[index];      data: response.data,
+
+      if (result.status === "fulfilled" && result.value.success) {    };
+
+        healthData[component] = result.value.data;  } catch (error) {
+
+      } else {    return {
+
+        healthData[component] = {      success: false,
+
+          error: result.reason?.message || "Failed to fetch data",      error:
+
+        };        error.response?.data?.error ||
+
+      }        error.message ||
+
+    });        "Failed to fetch sensor data",
+
+    };
+
+    return healthData;  }
+
+  } catch (error) {};
+
+    console.error("Error fetching all components:", error);
+
+    throw error;/**
+
+  } * Fetch sensor data history
+
+}; * Endpoint: GET /api/sensor/history
+
+ * @param {number} limit - Number of records to fetch (1-1000, default: 50)
+
+// ============================================================================ * @returns {Promise<Object>} Historical sensor data
+
+// SENSOR DATA ENDPOINTS */
+
+// ============================================================================export const fetchSensorHistory = async (limit = 50) => {
+
+  try {
+
+/**    const response = await apiClient.get("/sensor/history", {
+
+ * Fetch latest sensor data from MQTT      params: { limit },
+
+ * Endpoint: GET /api/sensor/latest    });
+
+ *     return {
+
+ * @returns {Promise<Object>} Latest sensor readings      success: true,
+
+ *       data: response.data,
+
+ * Response includes:    };
+
+ *   - machine_id: "C_FL104"  } catch (error) {
+
+ *   - timestamp: ISO timestamp    return {
+
+ *   - sensor_data: { temperature, vibration, pressure, speed, etc. }      success: false,
+
+ */      error:
+
+export const fetchLatestSensorData = async () => {        error.response?.data?.error ||
+
+  try {        error.message ||
+
+    const response = await apiClient.get("/sensor/latest");        "Failed to fetch sensor history",
+
+    return {    };
+
+      success: true,  }
+
+      data: response.data,};
+
+    };
+
+  } catch (error) {/**
+
+    return { * Run maintenance prediction
+
+      success: false, * @param {Object} payload - Prediction input data
+
+      error: * @param {number} payload.total_produksi - Total production count
+
+        error.response?.data?.error || * @param {number} payload.produk_cacat - Defect count
+
+        error.message || * @returns {Promise<Object>} Prediction result
+
+        "Failed to fetch sensor data", */
+
+    };export const runMaintenancePrediction = async (payload) => {
+
+  }  try {
+
+};    const response = await apiClient.post("/predict/maintenance", payload);
+
+    return {
+
+/**      success: true,
+
+ * Fetch sensor data history      data: response.data,
+
+ * Endpoint: GET /api/sensor/history?limit={limit}    };
+
+ *   } catch (error) {
+
+ * @param {number} limit - Number of records to fetch (1-1000, default: 50)    return {
+
+ * @returns {Promise<Object>} Historical sensor data      success: false,
+
+ *       error:
+
+ * Response includes:        error.response?.data?.error ||
+
+ *   - count: Number of records returned        error.message ||
+
+ *   - data: Array of sensor readings with timestamps        "Failed to run prediction",
+
+ */    };
+
+export const fetchSensorHistory = async (limit = 50) => {  }
+
+  try {};
+
+    const response = await apiClient.get("/sensor/history", {
+
+      params: { limit },/**
+
+    }); * Fetch health data for all components in parallel
+
+    return { * @param {string[]} components - Array of component names
+
+      success: true, * @returns {Promise<Object>} Object with component names as keys
+
+      data: response.data, */
+
+    };export const fetchAllComponentsHealth = async (components) => {
+
+  } catch (error) {  try {
+
+    return {    const promises = components.map((component) =>
+
+      success: false,      fetchComponentHealth(component)
+
+      error:    );
+
+        error.response?.data?.error ||
+
+        error.message ||    const results = await Promise.allSettled(promises);
+
+        "Failed to fetch sensor history",
+
+    };    const healthData = {};
+
+  }    components.forEach((component, index) => {
+
+};      const result = results[index];
+
+      if (result.status === "fulfilled" && result.value.success) {
+
+// ============================================================================        healthData[component] = result.value.data;
+
+// PREDICTION ENDPOINTS      } else {
+
+// ============================================================================        healthData[component] = {
+
+          error: result.reason?.message || "Failed to fetch data",
+
+/**        };
+
+ * Run maintenance prediction for overall machine      }
+
+ * Endpoint: POST /api/predict/maintenance    });
+
+ * 
+
+ * @param {Object} payload - Prediction input data    return healthData;
+
+ * @param {string} payload.machine_id - Machine identifier (default: "C_FL104")  } catch (error) {
+
+ * @param {number} payload.total_produksi - Total production count    console.error("Error fetching all components:", error);
+
+ * @param {number} payload.produk_cacat - Defect count    throw error;
+
+ * @param {number} payload.performance_rate - Performance rate (0-100)  }
+
+ * @param {number} payload.quality_rate - Quality rate (0-100)};
+
+ * @param {number} payload.availability_rate - Availability rate (0-100)
+
+ * @returns {Promise<Object>} Prediction resultexport default apiClient;
+
+ * 
+ * Example payload:
+ * {
+ *   "machine_id": "C_FL104",
+ *   "total_produksi": 15000,
+ *   "produk_cacat": 150,
+ *   "performance_rate": 85.5,
+ *   "quality_rate": 99.0,
+ *   "availability_rate": 92.3
+ * }
+ * 
+ * Response includes:
+ *   - estimated_duration: "12 jam 30 menit"
+ *   - confidence: 0.87 (87%)
+ *   - maintenance_days: 3
+ *   - recommendations: Array of actions
+ */
+export const runMaintenancePrediction = async (payload) => {
+  try {
+    const response = await apiClient.post("/predict/maintenance", payload);
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error.response?.data?.error ||
+        error.message ||
+        "Failed to run prediction",
+    };
+  }
+};
+
+/**
+ * Fetch prediction history
+ * Endpoint: GET /api/predict/history?limit={limit}&date_from={date}
+ * 
+ * @param {Object} params - Query parameters
+ * @param {number} params.limit - Number of records (default: 20)
+ * @param {string} params.date_from - Start date (format: YYYY-MM-DD)
+ * @returns {Promise<Object>} Historical predictions
+ * 
+ * Response includes:
+ *   - count: Number of records
+ *   - predictions: Array of past prediction results with timestamps
+ */
+export const fetchPredictionHistory = async (params = {}) => {
+  try {
+    const response = await apiClient.get("/predict/history", { params });
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error.response?.data?.error ||
+        error.message ||
+        "Failed to fetch prediction history",
+    };
+  }
+};
+
+// ============================================================================
+// SYSTEM INFO ENDPOINTS
+// ============================================================================
+
+/**
+ * Fetch system information
+ * Endpoint: GET /api/info
+ * 
+ * @returns {Promise<Object>} System information
+ * 
+ * Response includes:
+ *   - service: "FlexoTwin Backend API"
+ *   - version: API version
+ *   - status: "healthy"
+ *   - model_loaded: boolean
+ *   - database_connected: boolean
+ */
+export const fetchSystemInfo = async () => {
+  try {
+    const response = await apiClient.get("/info");
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error.response?.data?.error ||
+        error.message ||
+        "Failed to fetch system info",
+    };
+  }
+};
+
+// ============================================================================
+// EXPORTS
+// ============================================================================
+
+export default apiClient;

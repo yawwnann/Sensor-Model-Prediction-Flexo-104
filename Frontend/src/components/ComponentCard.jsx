@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import {
   Activity,
   AlertCircle,
@@ -11,6 +11,25 @@ import {
   Info,
   AlertTriangle,
 } from "lucide-react";
+
+/**
+ * ComponentCard - Display individual component health status
+ * 
+ * Menampilkan health status per komponen untuk monitoring detail
+ * 
+ * Note: Walaupun komponen ini menampilkan status per komponen,
+ * prediction yang dilakukan oleh ML model adalah untuk KESELURUHAN
+ * MESIN C_FL104, bukan per komponen.
+ * 
+ * Component ini digunakan untuk:
+ * - Monitoring detail health per komponen
+ * - Identifikasi komponen yang memerlukan perhatian
+ * - Breakdown health untuk analisis
+ * 
+ * Sesuai DOKUMENTASI.md:
+ * - Model memprediksi total maintenance duration untuk seluruh mesin
+ * - Component breakdown untuk monitoring saja
+ */
 
 const ComponentCard = ({ name, healthData, isLoading }) => {
   const [showRecommendations, setShowRecommendations] = useState(false);
