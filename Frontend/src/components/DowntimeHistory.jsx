@@ -154,7 +154,7 @@ const DowntimeHistory = ({ limit = 50 }) => {
     }
 
     console.log(
-      `📊 Transforming ${apiData.length} downtime records from backend`
+      `📊 Transforming ${apiData.length} downtime records from enhanced backend`
     );
 
     return apiData.map((item) => {
@@ -176,19 +176,53 @@ const DowntimeHistory = ({ limit = 50 }) => {
           })
         : "N/A";
 
+      // Enhanced severity mapping based on machine status
+      let enhancedSeverity = item.severity || "Unknown";
+      const machineStatus = item.machine_status;
+
+      // Override severity based on machine status if available
+      if (machineStatus) {
+        switch (machineStatus) {
+          case "Error":
+            enhancedSeverity = "Critical";
+            break;
+          case "Stopped":
+            enhancedSeverity = "High";
+            break;
+          case "Maintenance":
+            enhancedSeverity = "Scheduled";
+            break;
+          case "Idle":
+            enhancedSeverity = "Medium";
+            break;
+          default:
+            enhancedSeverity = capitalizeFirst(item.severity) || "Unknown";
+        }
+      }
+
+      // Enhanced reason with machine status context
+      let enhancedReason = item.reason || "No reason specified";
+      if (machineStatus && !enhancedReason.includes(machineStatus)) {
+        enhancedReason = `[${machineStatus}] ${enhancedReason}`;
+      }
+
       return {
         id: item.id || `downtime-${Date.now()}-${Math.random()}`,
         timestamp: displayTimestamp,
         component: item.component || "Unknown",
-        reason: item.reason || "No reason specified",
+        reason: enhancedReason,
         duration: durationText,
         durationMinutes: durationMinutes,
-        severity: capitalizeFirst(item.severity) || "Unknown",
-        resolved: item.status === "resolved" || item.status === "resolved",
+        severity: enhancedSeverity,
+        resolved: item.status === "resolved",
         resolvedBy: item.technician || "Auto-detected",
-        actions: item.notes ? [item.notes] : ["No additional notes"],
+        actions: item.notes
+          ? [item.notes]
+          : ["Machine status detected automatically from database"],
         preventiveMaintenance: item.type === "preventive",
         ongoing: item.ongoing || false,
+        machineStatus: machineStatus || "N/A",
+        rawData: item, // Keep raw data for debugging
       };
     });
   };
@@ -227,6 +261,23 @@ const DowntimeHistory = ({ limit = 50 }) => {
     }
   };
 
+  const getMachineStatusColor = (status) => {
+    switch (status) {
+      case "Error":
+        return "bg-red-100 text-red-700 border border-red-300";
+      case "Stopped":
+        return "bg-orange-100 text-orange-700 border border-orange-300";
+      case "Maintenance":
+        return "bg-green-100 text-green-700 border border-green-300";
+      case "Idle":
+        return "bg-blue-100 text-blue-700 border border-blue-300";
+      case "Running":
+        return "bg-emerald-100 text-emerald-700 border border-emerald-300";
+      default:
+        return "bg-gray-100 text-gray-700 border border-gray-300";
+    }
+  };
+
   const getSeverityIcon = (severity) => {
     switch (severity) {
       case "High":
@@ -254,10 +305,10 @@ const DowntimeHistory = ({ limit = 50 }) => {
             </div>
             <div>
               <h3 className="text-white font-semibold text-lg">
-                Riwayat Downtime
+                Riwayat Downtime (Enhanced)
               </h3>
               <p className="text-slate-300 text-sm">
-                Mesin Flexo C_FL104 - Last 7 days
+                Mesin Flexo C_FL104 - Machine Status Detection
               </p>
             </div>
           </div>
@@ -436,13 +487,28 @@ const DowntimeHistory = ({ limit = 50 }) => {
               ? "Machine is running smoothly with no downtime events detected."
               : "No downtime events found for the selected filters."}
           </p>
-          <div className="text-sm text-slate-400 space-y-1">
-            <p>• Check if the sensor simulator is running to generate data</p>
-            <p>• Try adjusting the date range or component filters</p>
-            <p>
-              • Downtime events are detected from machine_logs when
-              performance/quality drops below 20%
+          <div className="text-sm text-slate-400 space-y-1 bg-slate-50 rounded-lg p-4 max-w-md mx-auto">
+            <p className="font-medium text-slate-600 mb-2">
+              💡 How downtime detection works:
             </p>
+            <p>
+              • <strong>Machine Status:</strong> Detects when status changes
+              from "Running" to Error/Stopped/Maintenance/Idle
+            </p>
+            <p>
+              • <strong>Performance Drops:</strong> Triggers when performance or
+              quality falls below 20%
+            </p>
+            <p>
+              • <strong>Real-time Analysis:</strong> Data sourced from
+              machine_logs table in database
+            </p>
+            <div className="mt-3 pt-2 border-t border-slate-200">
+              <p className="text-xs text-slate-500">
+                Run sensor_simulator.py to generate various machine statuses for
+                testing
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -458,6 +524,9 @@ const DowntimeHistory = ({ limit = 50 }) => {
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                   Component
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Machine Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                   Reason
@@ -485,7 +554,19 @@ const DowntimeHistory = ({ limit = 50 }) => {
                         {record.component}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-700">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`px-2 py-1 text-xs font-medium rounded-lg ${getMachineStatusColor(
+                          record.machineStatus
+                        )}`}
+                      >
+                        {record.machineStatus}
+                      </span>
+                    </td>
+                    <td
+                      className="px-6 py-4 text-sm text-slate-700 max-w-xs truncate"
+                      title={record.reason}
+                    >
                       {record.reason}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">
@@ -517,32 +598,60 @@ const DowntimeHistory = ({ limit = 50 }) => {
                   {expandedRow === record.id && (
                     <tr>
                       <td
-                        colSpan="6"
+                        colSpan="7"
                         className="px-6 py-4 bg-blue-50 border-t border-blue-100"
                       >
                         <div className="space-y-3">
-                          <div>
-                            <h4 className="text-sm font-semibold text-slate-800 mb-2">
-                              Actions Taken:
-                            </h4>
-                            <ul className="list-disc list-inside space-y-1">
-                              {record.actions.map((action, idx) => (
-                                <li
-                                  key={idx}
-                                  className="text-sm text-slate-700"
-                                >
-                                  {action}
-                                </li>
-                              ))}
-                            </ul>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <h4 className="text-sm font-semibold text-slate-800 mb-2">
+                                Machine Status Details:
+                              </h4>
+                              <div className="space-y-1 text-sm text-slate-700">
+                                <p>
+                                  <strong>Original Status:</strong>{" "}
+                                  {record.machineStatus}
+                                </p>
+                                <p>
+                                  <strong>Component Affected:</strong>{" "}
+                                  {record.component}
+                                </p>
+                                <p>
+                                  <strong>Type:</strong>{" "}
+                                  {record.preventiveMaintenance
+                                    ? "Preventive"
+                                    : "Reactive"}{" "}
+                                  Maintenance
+                                </p>
+                                <p>
+                                  <strong>Duration:</strong> {record.duration} (
+                                  {record.durationMinutes} minutes)
+                                </p>
+                              </div>
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-semibold text-slate-800 mb-2">
+                                Actions Taken:
+                              </h4>
+                              <ul className="list-disc list-inside space-y-1 text-sm text-slate-700">
+                                {record.actions.map((action, idx) => (
+                                  <li key={idx}>{action}</li>
+                                ))}
+                              </ul>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-4 text-sm">
+                          <div className="flex items-center gap-4 text-sm pt-2 border-t border-blue-200">
                             <span className="text-slate-600">
                               <strong>Resolved by:</strong> {record.resolvedBy}
                             </span>
                             {record.preventiveMaintenance && (
                               <span className="px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
                                 Preventive Maintenance
+                              </span>
+                            )}
+                            {record.ongoing && (
+                              <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-lg text-xs font-medium">
+                                Ongoing Issue
                               </span>
                             )}
                           </div>
@@ -559,10 +668,17 @@ const DowntimeHistory = ({ limit = 50 }) => {
 
       {/* Footer */}
       <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 rounded-b-xl">
-        <p className="text-xs text-slate-600">
-          <strong>Note:</strong> Data downtime digunakan untuk analisis
-          maintenance predictive dan improvement proses operasional mesin.
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-600">
+            <strong>Enhanced Downtime Detection:</strong> Menggunakan
+            machine_status dari database untuk deteksi downtime yang akurat
+          </p>
+          <div className="flex items-center gap-4 text-xs text-slate-500">
+            <span>🟢 Real-time Data</span>
+            <span>🔍 Machine Status Analysis</span>
+            <span>📊 Performance Metrics</span>
+          </div>
+        </div>
       </div>
     </div>
   );

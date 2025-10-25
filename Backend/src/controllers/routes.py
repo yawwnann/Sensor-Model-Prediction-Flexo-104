@@ -6,9 +6,11 @@ Centralized route registration and management
 from flask import Flask
 from src.controllers.health_controller import health_bp
 from src.controllers.component_controller import component_bp
-from src.controllers.prediction_controller import prediction_bp
+from src.controllers.prediction_controller import prediction_bp 
 from src.controllers.docs_controller import docs_bp
 from src.controllers.downtime_controller import downtime_bp
+from src.controllers.sensor_controller import sensor_bp
+from src.controllers.auth_controller import auth_bp
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -28,6 +30,8 @@ def register_routes(app: Flask) -> None:
         app.register_blueprint(prediction_bp, url_prefix='/api')
         app.register_blueprint(docs_bp, url_prefix='/api')
         app.register_blueprint(downtime_bp, url_prefix='/api')
+        app.register_blueprint(sensor_bp, url_prefix='/api')
+        app.register_blueprint(auth_bp, url_prefix='/api')
         
         logger.info("All routes registered successfully")
         

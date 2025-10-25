@@ -2,3 +2,89 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom animations for better UX */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 5px rgba(234, 88, 12, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(234, 88, 12, 0.8), 0 0 30px rgba(234, 88, 12, 0.6);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s ease-out;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glass effect */
+.glass-effect {
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Health status indicator animations */
+.health-indicator {
+  transition: all 0.3s ease;
+}
+
+.health-indicator:hover {
+  transform: scale(1.05);
+}
+
+/* Responsive Hotspot Positioning */
+@layer utilities {
+  /* Tablet (md: 768px+) */
+  @media (min-width: 768px) {
+    .hotspot-responsive {
+      top: var(--tablet-y) !important;
+      left: var(--tablet-x) !important;
+    }
+  }
+
+  /* Desktop (lg: 1024px+) */
+  @media (min-width: 1024px) {
+    .hotspot-responsive {
+      top: var(--desktop-y) !important;
+      left: var(--desktop-x) !important;
+    }
+  }
+}

@@ -160,6 +160,7 @@ def update_latest_sensor_data(data):
         "machine_status": data.get("machine_status"),
         "performance_rate": data.get("performance_rate"),
         "quality_rate": data.get("quality_rate"),
+        "availability_rate": data.get("availability_rate", 0.0),  # ✅ TAMBAHAN
         "cumulative_production": data.get("cumulative_production", 0),
         "cumulative_defects": data.get("cumulative_defects", 0),
         "timestamp": data.get("timestamp"),

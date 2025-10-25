@@ -224,10 +224,11 @@ class DatabaseService:
                 machine_status, 
                 performance_rate, 
                 quality_rate,
+                availability_rate,
                 cumulative_production,
                 cumulative_defects
             )
-            VALUES (%s, %s, %s, %s, %s, %s);
+            VALUES (%s, %s, %s, %s, %s, %s, %s);
             """
         )
         try:
@@ -240,6 +241,7 @@ class DatabaseService:
                             data.get('machine_status'),
                             data.get('performance_rate'),
                             data.get('quality_rate'),
+                            data.get('availability_rate', 0.0),    # ✅ TAMBAHAN
                             data.get('cumulative_production', 0),  # Default 0 if not present
                             data.get('cumulative_defects', 0),     # Default 0 if not present
                         ),

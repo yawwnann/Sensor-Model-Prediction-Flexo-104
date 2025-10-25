@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import ComponentCard from "../components/ComponentCard";
+import HealthSummary from "../components/HealthSummary";
 import OEEChart from "../components/OEEChart";
 import TrendChart from "../components/TrendChart";
 import FMEATable from "../components/FMEATable";
 import AutoPredictionAlert from "../components/AutoPredictionAlert";
 import DowntimeHistory from "../components/DowntimeHistory";
+import SensorDataDisplay from "../components/SensorDataDisplay";
 import Hotspot from "../components/Hotspot";
 import HotspotPopover from "../components/HotspotPopover";
 import Navbar from "../components/Navbar";
@@ -15,21 +17,23 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 /**
  * DashboardPage - Main Monitoring Dashboard for Flexo Machine C_FL104
- * 
+ *
  * Features:
  * - Real-time health monitoring untuk semua komponen
  * - Auto-prediction alert ketika overall machine health < 40%
  * - Interactive machine diagram dengan hotspots
  * - Health trends & OEE charts
  * - FMEA analysis table
- * 
+ *
  * Note: Auto-prediction memprediksi maintenance duration untuk
  * KESELURUHAN MESIN C_FL104, bukan per komponen individual.
- * 
+ *
  * Sesuai dengan DOKUMENTASI.md - Model ML memprediksi total
  * maintenance time untuk seluruh mesin.
  */
@@ -44,17 +48,25 @@ const REFRESH_INTERVAL = 5000;
 const hotspotConfig = [
   {
     id: 1,
-    x: 15,
+    x: 25,
     y: 55,
     label: "Pre-Feeder",
     componentName: "Pre-Feeder",
+    responsive: {
+      mobile: { x: 15, y: 50 },
+      tablet: { x: 15, y: 52 },
+    },
   },
   {
     id: 2,
-    x: 25,
+    x: 32,
     y: 55,
     label: "Feeder",
     componentName: "Feeder",
+    responsive: {
+      mobile: { x: 25, y: 50 },
+      tablet: { x: 22, y: 52 },
+    },
   },
   {
     id: 3,
@@ -62,20 +74,32 @@ const hotspotConfig = [
     y: 55,
     label: "Printing",
     componentName: "Printing",
+    responsive: {
+      mobile: { x: 50, y: 50 },
+      tablet: { x: 50, y: 52 },
+    },
   },
   {
     id: 4,
-    x: 70,
+    x: 63,
     y: 55,
     label: "Slotter",
     componentName: "Slotter",
+    responsive: {
+      mobile: { x: 68, y: 50 },
+      tablet: { x: 70, y: 52 },
+    },
   },
   {
     id: 5,
-    x: 85,
+    x: 75,
     y: 55,
     label: "Stacker",
     componentName: "Stacker",
+    responsive: {
+      mobile: { x: 80, y: 50 },
+      tablet: { x: 88, y: 52 },
+    },
   },
 ];
 
@@ -87,13 +111,21 @@ const slide2Hotspots = [
     y: 50,
     label: "Pre-Feeder",
     componentName: "Pre-Feeder",
+    responsive: {
+      mobile: { x: 45, y: 50 },
+      tablet: { x: 45, y: 48 },
+    },
   },
   {
     id: 2,
-    x: 65,
+    x: 60,
     y: 50,
     label: "Feeder",
     componentName: "Feeder",
+    responsive: {
+      mobile: { x: 68, y: 50 },
+      tablet: { x: 62, y: 48 },
+    },
   },
 ];
 
@@ -138,6 +170,7 @@ function DashboardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hoveredHotspot, setHoveredHotspot] = useState(null);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [showDetailedCards, setShowDetailedCards] = useState(false); // Toggle untuk detailed vs summary view
   const totalSlides = 5;
 
   // Historical data for trends
@@ -178,7 +211,7 @@ function DashboardPage() {
       // Update health history for each component using functional update
       setHealthHistory((prevHistory) => {
         const updatedHistory = { ...prevHistory };
-        
+
         COMPONENTS.forEach((component) => {
           if (data[component] && !data[component].error) {
             const health = data[component].health_index || 0;
@@ -188,7 +221,7 @@ function DashboardPage() {
             ].slice(-50); // Keep last 50 points
           }
         });
-        
+
         return updatedHistory;
       });
 
@@ -280,7 +313,7 @@ function DashboardPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Navbar */}
-      <Navbar 
+      <Navbar
         lastUpdate={lastUpdate}
         overallHealth={overallHealth}
         isRefreshing={isRefreshing}
@@ -318,13 +351,15 @@ function DashboardPage() {
                   <Activity className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-white font-semibold text-lg">Flexo Machine</h3>
+                  <h3 className="text-white font-semibold text-lg">
+                    Flexo Machine
+                  </h3>
                   <p className="text-slate-300 text-sm">
                     View {currentSlide + 1}/{totalSlides}
                   </p>
                 </div>
               </div>
-              
+
               {/* Navigation Arrows */}
               <div className="flex items-center gap-2">
                 <button
@@ -351,7 +386,7 @@ function DashboardPage() {
                 {/* Slide 1 - Main Machine View */}
                 <div
                   className={`absolute inset-0 transition-transform duration-500 ease-in-out ${
-                    currentSlide === 0 ? 'translate-x-0' : '-translate-x-full'
+                    currentSlide === 0 ? "translate-x-0" : "-translate-x-full"
                   }`}
                 >
                   <div className="relative w-full h-full">
@@ -361,10 +396,10 @@ function DashboardPage() {
                       alt="Flexo Machine Diagram"
                       className="absolute inset-0 w-full h-full object-contain p-4"
                       onError={(e) => {
-                        e.target.style.display = 'none';
+                        e.target.style.display = "none";
                       }}
                     />
-                    
+
                     {/* Fallback line if image not available */}
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                       <div className="w-full h-2 mx-8 opacity-20"></div>
@@ -415,10 +450,10 @@ function DashboardPage() {
                 <div
                   className={`absolute inset-0 transition-transform duration-500 ease-in-out ${
                     currentSlide === 1
-                      ? 'translate-x-0'
+                      ? "translate-x-0"
                       : currentSlide < 1
-                      ? 'translate-x-full'
-                      : '-translate-x-full'
+                      ? "translate-x-full"
+                      : "-translate-x-full"
                   }`}
                 >
                   <div className="relative w-full h-full bg-slate-50">
@@ -446,7 +481,10 @@ function DashboardPage() {
                               ? "warning"
                               : "critical"
                           }
-                          isActive={hoveredHotspot?.id === hotspot.id && currentSlide === 1}
+                          isActive={
+                            hoveredHotspot?.id === hotspot.id &&
+                            currentSlide === 1
+                          }
                           onMouseEnter={() => setHoveredHotspot(hotspot)}
                           onMouseLeave={() => setHoveredHotspot(null)}
                         />
@@ -454,21 +492,26 @@ function DashboardPage() {
                     })}
 
                     {/* Hotspot Popover */}
-                    {hoveredHotspot && currentSlide === 1 && (() => {
-                      const componentHealth = healthData[hoveredHotspot.componentName];
-                      return componentHealth && (
-                        <HotspotPopover
-                          x={hoveredHotspot.x}
-                          y={hoveredHotspot.y}
-                          data={{
-                            name: hoveredHotspot.label,
-                            health: componentHealth.health_index || 0,
-                            status: componentHealth.status || "Unknown",
-                            oee: componentHealth.metrics?.oee_score || 0,
-                          }}
-                        />
-                      );
-                    })()}
+                    {hoveredHotspot &&
+                      currentSlide === 1 &&
+                      (() => {
+                        const componentHealth =
+                          healthData[hoveredHotspot.componentName];
+                        return (
+                          componentHealth && (
+                            <HotspotPopover
+                              x={hoveredHotspot.x}
+                              y={hoveredHotspot.y}
+                              data={{
+                                name: hoveredHotspot.label,
+                                health: componentHealth.health_index || 0,
+                                status: componentHealth.status || "Unknown",
+                                oee: componentHealth.metrics?.oee_score || 0,
+                              }}
+                            />
+                          )
+                        );
+                      })()}
 
                     <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-sm px-6 py-3 rounded-lg">
                       <h4 className="text-white font-semibold text-center">
@@ -485,10 +528,10 @@ function DashboardPage() {
                 <div
                   className={`absolute inset-0 transition-transform duration-500 ease-in-out ${
                     currentSlide === 2
-                      ? 'translate-x-0'
+                      ? "translate-x-0"
                       : currentSlide < 2
-                      ? 'translate-x-full'
-                      : '-translate-x-full'
+                      ? "translate-x-full"
+                      : "-translate-x-full"
                   }`}
                 >
                   <div className="relative w-full h-full bg-slate-50">
@@ -516,7 +559,10 @@ function DashboardPage() {
                               ? "warning"
                               : "critical"
                           }
-                          isActive={hoveredHotspot?.id === hotspot.id && currentSlide === 2}
+                          isActive={
+                            hoveredHotspot?.id === hotspot.id &&
+                            currentSlide === 2
+                          }
                           onMouseEnter={() => setHoveredHotspot(hotspot)}
                           onMouseLeave={() => setHoveredHotspot(null)}
                         />
@@ -524,21 +570,26 @@ function DashboardPage() {
                     })}
 
                     {/* Hotspot Popover */}
-                    {hoveredHotspot && currentSlide === 2 && (() => {
-                      const componentHealth = healthData[hoveredHotspot.componentName];
-                      return componentHealth && (
-                        <HotspotPopover
-                          x={hoveredHotspot.x}
-                          y={hoveredHotspot.y}
-                          data={{
-                            name: hoveredHotspot.label,
-                            health: componentHealth.health_index || 0,
-                            status: componentHealth.status || "Unknown",
-                            oee: componentHealth.metrics?.oee_score || 0,
-                          }}
-                        />
-                      );
-                    })()}
+                    {hoveredHotspot &&
+                      currentSlide === 2 &&
+                      (() => {
+                        const componentHealth =
+                          healthData[hoveredHotspot.componentName];
+                        return (
+                          componentHealth && (
+                            <HotspotPopover
+                              x={hoveredHotspot.x}
+                              y={hoveredHotspot.y}
+                              data={{
+                                name: hoveredHotspot.label,
+                                health: componentHealth.health_index || 0,
+                                status: componentHealth.status || "Unknown",
+                                oee: componentHealth.metrics?.oee_score || 0,
+                              }}
+                            />
+                          )
+                        );
+                      })()}
 
                     <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-sm px-6 py-3 rounded-lg">
                       <h4 className="text-white font-semibold text-center">
@@ -555,10 +606,10 @@ function DashboardPage() {
                 <div
                   className={`absolute inset-0 transition-transform duration-500 ease-in-out ${
                     currentSlide === 3
-                      ? 'translate-x-0'
+                      ? "translate-x-0"
                       : currentSlide < 3
-                      ? 'translate-x-full'
-                      : '-translate-x-full'
+                      ? "translate-x-full"
+                      : "-translate-x-full"
                   }`}
                 >
                   <div className="relative w-full h-full bg-slate-50">
@@ -586,7 +637,10 @@ function DashboardPage() {
                               ? "warning"
                               : "critical"
                           }
-                          isActive={hoveredHotspot?.id === hotspot.id && currentSlide === 3}
+                          isActive={
+                            hoveredHotspot?.id === hotspot.id &&
+                            currentSlide === 3
+                          }
                           onMouseEnter={() => setHoveredHotspot(hotspot)}
                           onMouseLeave={() => setHoveredHotspot(null)}
                         />
@@ -594,21 +648,26 @@ function DashboardPage() {
                     })}
 
                     {/* Hotspot Popover */}
-                    {hoveredHotspot && currentSlide === 3 && (() => {
-                      const componentHealth = healthData[hoveredHotspot.componentName];
-                      return componentHealth && (
-                        <HotspotPopover
-                          x={hoveredHotspot.x}
-                          y={hoveredHotspot.y}
-                          data={{
-                            name: hoveredHotspot.label,
-                            health: componentHealth.health_index || 0,
-                            status: componentHealth.status || "Unknown",
-                            oee: componentHealth.metrics?.oee_score || 0,
-                          }}
-                        />
-                      );
-                    })()}
+                    {hoveredHotspot &&
+                      currentSlide === 3 &&
+                      (() => {
+                        const componentHealth =
+                          healthData[hoveredHotspot.componentName];
+                        return (
+                          componentHealth && (
+                            <HotspotPopover
+                              x={hoveredHotspot.x}
+                              y={hoveredHotspot.y}
+                              data={{
+                                name: hoveredHotspot.label,
+                                health: componentHealth.health_index || 0,
+                                status: componentHealth.status || "Unknown",
+                                oee: componentHealth.metrics?.oee_score || 0,
+                              }}
+                            />
+                          )
+                        );
+                      })()}
 
                     <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-sm px-6 py-3 rounded-lg">
                       <h4 className="text-white font-semibold text-center">
@@ -625,10 +684,10 @@ function DashboardPage() {
                 <div
                   className={`absolute inset-0 transition-transform duration-500 ease-in-out ${
                     currentSlide === 4
-                      ? 'translate-x-0'
+                      ? "translate-x-0"
                       : currentSlide < 4
-                      ? 'translate-x-full'
-                      : '-translate-x-full'
+                      ? "translate-x-full"
+                      : "-translate-x-full"
                   }`}
                 >
                   <div className="relative w-full h-full bg-slate-50">
@@ -656,7 +715,10 @@ function DashboardPage() {
                               ? "warning"
                               : "critical"
                           }
-                          isActive={hoveredHotspot?.id === hotspot.id && currentSlide === 4}
+                          isActive={
+                            hoveredHotspot?.id === hotspot.id &&
+                            currentSlide === 4
+                          }
                           onMouseEnter={() => setHoveredHotspot(hotspot)}
                           onMouseLeave={() => setHoveredHotspot(null)}
                         />
@@ -664,21 +726,26 @@ function DashboardPage() {
                     })}
 
                     {/* Hotspot Popover */}
-                    {hoveredHotspot && currentSlide === 4 && (() => {
-                      const componentHealth = healthData[hoveredHotspot.componentName];
-                      return componentHealth && (
-                        <HotspotPopover
-                          x={hoveredHotspot.x}
-                          y={hoveredHotspot.y}
-                          data={{
-                            name: hoveredHotspot.label,
-                            health: componentHealth.health_index || 0,
-                            status: componentHealth.status || "Unknown",
-                            oee: componentHealth.metrics?.oee_score || 0,
-                          }}
-                        />
-                      );
-                    })()}
+                    {hoveredHotspot &&
+                      currentSlide === 4 &&
+                      (() => {
+                        const componentHealth =
+                          healthData[hoveredHotspot.componentName];
+                        return (
+                          componentHealth && (
+                            <HotspotPopover
+                              x={hoveredHotspot.x}
+                              y={hoveredHotspot.y}
+                              data={{
+                                name: hoveredHotspot.label,
+                                health: componentHealth.health_index || 0,
+                                status: componentHealth.status || "Unknown",
+                                oee: componentHealth.metrics?.oee_score || 0,
+                              }}
+                            />
+                          )
+                        );
+                      })()}
 
                     <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-sm px-6 py-3 rounded-lg">
                       <h4 className="text-white font-semibold text-center">
@@ -700,8 +767,8 @@ function DashboardPage() {
                     onClick={() => goToSlide(index)}
                     className={`transition-all rounded-full ${
                       currentSlide === index
-                        ? 'bg-white w-8 h-2'
-                        : 'bg-white/50 hover:bg-white/75 w-2 h-2'
+                        ? "bg-white w-8 h-2"
+                        : "bg-white/50 hover:bg-white/75 w-2 h-2"
                     }`}
                     aria-label={`Go to view ${index + 1}`}
                   />
@@ -711,40 +778,71 @@ function DashboardPage() {
           </div>
         </section>
 
-        {/* Component Cards Grid */}
+        {/* Component Health Section */}
         <section className="mb-8">
-          <h2 className="text-2xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-            <BarChart3 className="w-6 h-6" />
-            Component Health Status
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-            {COMPONENTS.map((component) => (
-              <ComponentCard
-                key={component}
-                name={component}
-                healthData={healthData[component]}
-                isLoading={isLoading}
-              />
-            ))}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+              <BarChart3 className="w-6 h-6" />
+              Component Health Status
+            </h2>
+
+            {/* Toggle View Button */}
+            <button
+              onClick={() => setShowDetailedCards(!showDetailedCards)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
+            >
+              {showDetailedCards ? (
+                <>
+                  <EyeOff className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-800">
+                    Summary View
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-800">
+                    Detailed View
+                  </span>
+                </>
+              )}
+            </button>
           </div>
+
+          {/* Conditional Rendering: Summary vs Detailed Cards */}
+          {showDetailedCards ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+              {COMPONENTS.map((component) => (
+                <ComponentCard
+                  key={component}
+                  name={component}
+                  healthData={healthData[component]}
+                  isLoading={isLoading}
+                />
+              ))}
+            </div>
+          ) : (
+            <HealthSummary
+              healthData={healthData}
+              isLoading={isLoading}
+              components={COMPONENTS}
+            />
+          )}
         </section>
 
         {/* Charts Section - Vertical Layout */}
         <div className="space-y-8 mb-8">
           {/* Health Trend Chart */}
           <section>
-            <TrendChart
-              healthHistory={healthHistory}
-              timestamps={timestamps}
-            />
+            <TrendChart healthHistory={healthHistory} timestamps={timestamps} />
           </section>
 
           {/* OEE Chart */}
           <section>
-            <OEEChart 
-              componentsData={healthData} 
-              oeeHistory={oeeHistory} 
-              timestamps={timestamps} 
+            <OEEChart
+              componentsData={healthData}
+              oeeHistory={oeeHistory}
+              timestamps={timestamps}
             />
           </section>
         </div>
@@ -754,9 +852,9 @@ function DashboardPage() {
           <FMEATable healthData={healthData} />
         </section>
 
-        {/* Downtime History */}
+        {/* Sensor Data Display - Real-time data langsung dari sensor */}
         <section className="mb-8">
-          <DowntimeHistory limit={10} />
+          <SensorDataDisplay limit={10} />
         </section>
       </main>
     </div>

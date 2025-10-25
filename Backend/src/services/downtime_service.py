@@ -30,7 +30,8 @@ class DowntimeService:
         end_date: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Menganalisis machine_logs untuk menghasilkan history downtime.
+        Mengambil history downtime dari database - pendekatan simpel.
+        Ambil semua record dengan machine_status = 'Downtime' dan hitung durasinya.
         
         Args:
             limit: Maksimal jumlah downtime events yang dikembalikan
@@ -42,48 +43,177 @@ class DowntimeService:
             List of downtime events dengan detail lengkap
         """
         try:
-            logger.info("=" * 60)
-            logger.info("DOWNTIME DETECTION - STARTING")
-            logger.info(f"Parameters: limit={limit}, component={component_filter}, start={start_date}, end={end_date}")
-            logger.info("=" * 60)
+            logger.info(f"🔍 Getting downtime history - Simple approach (limit={limit})")
             
-            # PRIORITY: Analyze health drops from machine_logs (REAL DATA)
-            logger.info("🔍 [STEP 1] Analyzing downtime from machine_logs performance/quality metrics")
-            downtime_from_health = self._analyze_health_drops(limit, start_date, end_date)
+            with db_service.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Query untuk mengambil semua record dengan machine_status = 'Downtime'
+                    query = """
+                        WITH downtime_periods AS (
+                            SELECT 
+                                timestamp,
+                                machine_status,
+                                performance_rate,
+                                quality_rate,
+                                LAG(timestamp) OVER (ORDER BY timestamp) as prev_timestamp,
+                                LAG(machine_status) OVER (ORDER BY timestamp) as prev_status,
+                                LEAD(timestamp) OVER (ORDER BY timestamp) as next_timestamp,
+                                LEAD(machine_status) OVER (ORDER BY timestamp) as next_status
+                            FROM machine_logs
+                            WHERE 1=1
+                    """
+                    params = []
+                    
+                    # Tambahkan filter tanggal jika ada
+                    if start_date:
+                        query += " AND timestamp >= %s"
+                        params.append(start_date)
+                    
+                    if end_date:
+                        query += " AND timestamp <= %s"
+                        params.append(end_date)
+                    
+                    query += """
+                            ORDER BY timestamp ASC
+                        ),
+                        downtime_starts AS (
+                            SELECT 
+                                timestamp as start_time,
+                                machine_status,
+                                performance_rate,
+                                quality_rate,
+                                next_timestamp as end_time,
+                                next_status
+                            FROM downtime_periods
+                            WHERE machine_status IN ('Downtime', 'Maintenance', 'Error', 'Idle', 'Stopped', 'Setup', 'Changeover')
+                            AND (prev_status IS NULL OR prev_status != machine_status)
+                        )
+                        SELECT 
+                            start_time,
+                            machine_status,
+                            performance_rate,
+                            quality_rate,
+                            end_time,
+                            CASE 
+                                WHEN end_time IS NOT NULL THEN 
+                                    EXTRACT(EPOCH FROM (end_time - start_time))/60 
+                                ELSE 
+                                    EXTRACT(EPOCH FROM (NOW() - start_time))/60 
+                            END as duration_minutes
+                        FROM downtime_starts
+                        WHERE CASE 
+                                WHEN end_time IS NOT NULL THEN 
+                                    EXTRACT(EPOCH FROM (end_time - start_time))/60 
+                                ELSE 
+                                    EXTRACT(EPOCH FROM (NOW() - start_time))/60 
+                            END >= 0.5
+                        ORDER BY start_time DESC
+                        LIMIT %s
+                    """
+                    params.append(limit)
+                    
+                    cursor.execute(query, params)
+                    results = cursor.fetchall()
+                    
+                    logger.info(f"📊 Found {len(results)} downtime periods from database")
+                    
+                    downtime_events = []
+                    
+                    for i, row in enumerate(results):
+                        start_time, machine_status, performance, quality, end_time, duration = row
+                        
+                        # Tentukan komponen berdasarkan machine status dan metrics
+                        if machine_status == 'Maintenance':
+                            component = "Maintenance"
+                        elif machine_status == 'Error':
+                            component = "System"
+                        elif machine_status == 'Stopped':
+                            component = "Operator"
+                        elif machine_status == 'Idle':
+                            component = "Material Supply"
+                        else:  # Downtime or others
+                            component = "System" if performance < 50 else "Printing"
+                        
+                        # Tentukan severity berdasarkan machine status dan durasi
+                        if machine_status == 'Error':
+                            severity = "critical" if duration >= 30 else "high"
+                        elif machine_status == 'Stopped':
+                            severity = "high" if duration >= 15 else "medium"
+                        elif machine_status == 'Maintenance':
+                            severity = "medium" if duration >= 60 else "low"
+                        elif machine_status == 'Idle':
+                            severity = "medium" if duration >= 10 else "low"
+                        else:  # Downtime
+                            if duration >= 60:  # >= 1 jam
+                                severity = "critical"
+                            elif duration >= 30:  # >= 30 menit
+                                severity = "high"
+                            elif duration >= 10:  # >= 10 menit
+                                severity = "medium"
+                            else:
+                                severity = "low"
+                        
+                        # Generate reason based on machine status
+                        if end_time:
+                            if machine_status == 'Maintenance':
+                                reason = f"Scheduled maintenance completed (Performance: {performance:.1f}%, Quality: {quality:.1f}%)"
+                            elif machine_status == 'Error':
+                                reason = f"System error resolved (Performance: {performance:.1f}%, Quality: {quality:.1f}%)"
+                            elif machine_status == 'Stopped':
+                                reason = f"Machine stopped by operator (Performance: {performance:.1f}%, Quality: {quality:.1f}%)"
+                            elif machine_status == 'Idle':
+                                reason = f"Machine idle - waiting for materials (Performance: {performance:.1f}%, Quality: {quality:.1f}%)"
+                            else:  # Downtime
+                                reason = f"Machine downtime period (Performance: {performance:.1f}%, Quality: {quality:.1f}%)"
+                            status = "resolved"
+                            ongoing = False
+                        else:
+                            if machine_status == 'Maintenance':
+                                reason = f"Ongoing maintenance (Performance: {performance:.1f}%, Quality: {quality:.1f}%)"
+                            elif machine_status == 'Error':
+                                reason = f"System error - requires attention (Performance: {performance:.1f}%, Quality: {quality:.1f}%)"
+                            elif machine_status == 'Stopped':
+                                reason = f"Machine stopped - operator intervention needed (Performance: {performance:.1f}%, Quality: {quality:.1f}%)"
+                            elif machine_status == 'Idle':
+                                reason = f"Machine idle - material supply needed (Performance: {performance:.1f}%, Quality: {quality:.1f}%)"
+                            else:  # Downtime
+                                reason = f"Ongoing machine downtime (Performance: {performance:.1f}%, Quality: {quality:.1f}%)"
+                            status = "ongoing"
+                            ongoing = True
+                        
+                        event = {
+                            "id": f"DT-{int(start_time.timestamp() * 1000) % 100000}",
+                            "timestamp": start_time.isoformat(),
+                            "end_timestamp": end_time.isoformat() if end_time else None,
+                            "component": component,
+                            "reason": reason,
+                            "duration": round(duration, 1),
+                            "type": "reactive",
+                            "severity": severity,
+                            "status": status,
+                            "technician": "Auto-detected",
+                            "notes": f"Machine status: {machine_status}. Duration: {duration:.1f} minutes.",
+                            "ongoing": ongoing,
+                            "machine_status": machine_status
+                        }
+                        
+                        downtime_events.append(event)
+                    
+                    # Filter berdasarkan komponen jika diminta
+                    if component_filter and component_filter.lower() != 'all':
+                        downtime_events = [
+                            event for event in downtime_events 
+                            if event['component'].lower() == component_filter.lower()
+                        ]
+                    
+                    logger.info(f"✅ Generated {len(downtime_events)} downtime events")
+                    return downtime_events
             
-            if downtime_from_health:
-                # Filter berdasarkan komponen jika diminta
-                if component_filter and component_filter.lower() != 'all':
-                    downtime_from_health = [
-                        event for event in downtime_from_health 
-                        if event['component'].lower() == component_filter.lower()
-                    ]
-                
-                logger.info(f"Generated {len(downtime_from_health)} downtime events from health analysis")
-                return downtime_from_health
-            
-            # FALLBACK: Try status-based detection
-            logs = self._fetch_machine_logs(limit * 10, start_date, end_date)
-            
-            if not logs:
-                logger.warning("No machine logs available for downtime analysis")
-                return []
-            
-            # Analisis logs untuk menemukan downtime periods
-            downtime_events = self._analyze_downtime_periods(logs)
-            
-            # Filter berdasarkan komponen jika diminta
-            if component_filter and component_filter.lower() != 'all':
-                downtime_events = [
-                    event for event in downtime_events 
-                    if event['component'].lower() == component_filter.lower()
-                ]
-            
-            # Limit hasil
-            downtime_events = downtime_events[:limit]
-            
-            logger.info(f"Generated {len(downtime_events)} downtime events from status analysis")
-            return downtime_events
+        except Exception as e:
+            logger.error(f"Error getting downtime history: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
             
         except Exception as e:
             logger.error(f"Error generating downtime history: {e}")
@@ -459,6 +589,258 @@ class DowntimeService:
     #     """Mock data generator - DISABLED for production"""
     #     logger.warning("Mock data generator is disabled. Only real data from machine_logs is used.")
     #     return []
+    
+    def _analyze_machine_status_downtime(
+        self,
+        limit: int = 50,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Menganalisis machine_status dari machine_logs untuk mendeteksi downtime periods.
+        Metode ini akan mendeteksi kapan machine_status berubah dari 'Running' ke status lain.
+        
+        Args:
+            limit: Maksimal events
+            start_date: Filter start date
+            end_date: Filter end date
+            
+        Returns:
+            List of downtime events detected from machine_status changes
+        """
+        try:
+            logger.info("📊 Analyzing machine_status changes for downtime detection...")
+            
+            # Fetch machine logs dengan machine_status
+            with db_service.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    query = """
+                        SELECT 
+                            timestamp,
+                            machine_status,
+                            performance_rate,
+                            quality_rate,
+                            cumulative_production,
+                            cumulative_defects
+                        FROM machine_logs
+                        WHERE 1=1
+                    """
+                    params = []
+                    
+                    if start_date:
+                        query += " AND timestamp >= %s"
+                        params.append(start_date)
+                    
+                    if end_date:
+                        query += " AND timestamp <= %s"
+                        params.append(end_date)
+                    
+                    query += " ORDER BY timestamp ASC LIMIT %s"
+                    params.append(limit * 100)  # Fetch much more data for analysis
+                    
+                    cursor.execute(query, params)
+                    results = cursor.fetchall()
+                    
+                    logger.info(f"📊 Query returned {len(results) if results else 0} machine_logs records")
+                    
+                    if not results:
+                        logger.warning("❌ No machine logs found for status analysis")
+                        return []
+                    
+                    # Analyze untuk menemukan perubahan status dari 'Running' ke non-running
+                    events = []
+                    in_downtime = False
+                    downtime_start = None
+                    downtime_status = None
+                    downtime_start_metrics = None
+                    prev_status = None
+                    status_changes = 0
+                    
+                    logger.info(f"🔍 Analyzing {len(results)} records for machine_status transitions...")
+                    
+                    for i, row in enumerate(results):
+                        timestamp = row[0]
+                        current_status = row[1]
+                        performance = float(row[2] or 0)
+                        quality = float(row[3] or 0)
+                        
+                        # Track status changes
+                        if prev_status and prev_status != current_status:
+                            status_changes += 1
+                            logger.info(f"📍 Status change #{status_changes}: {prev_status} → {current_status} at {timestamp}")
+                        
+                        # Deteksi mulai downtime: status berubah dari 'Running' ke status lain
+                        if (prev_status == 'Running' and current_status != 'Running') or (
+                            current_status in self.DOWNTIME_STATUS and not in_downtime
+                        ):
+                            in_downtime = True
+                            downtime_start = timestamp
+                            downtime_status = current_status
+                            downtime_start_metrics = {
+                                'performance': performance,
+                                'quality': quality,
+                                'status': current_status
+                            }
+                            logger.info(f"🔴 Downtime started: {current_status} at {timestamp}")
+                        
+                        # Deteksi akhir downtime: status kembali ke 'Running'
+                        elif current_status == 'Running' and in_downtime:
+                            in_downtime = False
+                            downtime_end = timestamp
+                            
+                            # Calculate duration
+                            duration = self._calculate_duration(downtime_start, downtime_end)
+                            logger.info(f"🟢 Downtime ended: Back to Running at {timestamp}, duration: {duration} minutes")
+                            
+                            if duration >= 1:  # Only record downtime >= 1 minute
+                                # Determine component based on downtime status
+                                component = self._map_status_to_component(downtime_status, downtime_start_metrics)
+                                
+                                # Determine severity based on status and duration
+                                severity = self._determine_severity(duration, downtime_status)
+                                
+                                # Generate reason based on status
+                                reason = self._generate_status_based_reason(downtime_status, component, downtime_start_metrics)
+                                
+                                event = {
+                                    "id": f"DT-{int(downtime_start.timestamp() * 1000) % 100000}" if hasattr(downtime_start, 'timestamp') else f"DT-{len(events)}",
+                                    "timestamp": downtime_start.isoformat() if hasattr(downtime_start, 'isoformat') else str(downtime_start),
+                                    "end_timestamp": downtime_end.isoformat() if hasattr(downtime_end, 'isoformat') else str(downtime_end),
+                                    "component": component,
+                                    "reason": reason,
+                                    "duration": duration,
+                                    "type": "preventive" if downtime_status == 'Maintenance' else "reactive",
+                                    "severity": severity,
+                                    "status": "resolved",
+                                    "technician": "Auto-detected from machine status",
+                                    "notes": f"Machine status changed from Running to {downtime_status}. Performance: {downtime_start_metrics['performance']:.1f}%, Quality: {downtime_start_metrics['quality']:.1f}%",
+                                    "ongoing": False,
+                                    "machine_status": downtime_status
+                                }
+                                events.append(event)
+                                logger.info(f"✅ Created downtime event: {component} - {duration} min (Status: {downtime_status})")
+                            
+                            # Reset for next downtime
+                            downtime_start = None
+                            downtime_status = None
+                            downtime_start_metrics = None
+                        
+                        prev_status = current_status
+                    
+                    # Handle ongoing downtime
+                    if in_downtime and downtime_start:
+                        from datetime import datetime
+                        downtime_end = datetime.now()
+                        duration = self._calculate_duration(downtime_start, downtime_end)
+                        
+                        component = self._map_status_to_component(downtime_status, downtime_start_metrics)
+                        severity = "high" if downtime_status in ['Error', 'Stopped'] else "medium"
+                        reason = f"Ongoing {downtime_status.lower()} - requires attention"
+                        
+                        event = {
+                            "id": f"DT-ONGOING-{int(datetime.now().timestamp() % 10000)}",
+                            "timestamp": downtime_start.isoformat() if hasattr(downtime_start, 'isoformat') else str(downtime_start),
+                            "end_timestamp": downtime_end.isoformat(),
+                            "component": component,
+                            "reason": reason,
+                            "duration": duration,
+                            "type": "reactive",
+                            "severity": severity,
+                            "status": "ongoing",
+                            "technician": "Pending",
+                            "notes": f"Machine is currently in {downtime_status} status. Waiting for resolution.",
+                            "ongoing": True,
+                            "machine_status": downtime_status
+                        }
+                        events.append(event)
+                        logger.info(f"⚠️ Ongoing downtime: {component} - {duration} min (Status: {downtime_status})")
+                    
+                    # Sort by timestamp descending (newest first)
+                    events.sort(key=lambda x: x['timestamp'], reverse=True)
+                    
+                    # Limit results
+                    events = events[:limit]
+                    
+                    logger.info(f"✅ Found {status_changes} status changes, generated {len(events)} downtime events")
+                    return events
+                    
+        except Exception as e:
+            logger.error(f"Error analyzing machine status downtime: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _map_status_to_component(self, status: str, metrics: Dict[str, Any]) -> str:
+        """
+        Map machine status dan metrics ke komponen yang kemungkinan bermasalah.
+        
+        Args:
+            status: Machine status (Error, Stopped, Maintenance, etc.)
+            metrics: Performance dan quality metrics
+            
+        Returns:
+            Nama komponen yang kemungkinan bermasalah
+        """
+        # Mapping berdasarkan status
+        status_component_map = {
+            'Maintenance': 'Multiple',
+            'Error': 'System',
+            'Stopped': 'Operator',
+            'Idle': 'Material Supply',
+            'Setup': 'Pre-Feeder',
+            'Changeover': 'Pre-Feeder'
+        }
+        
+        # Jika ada mapping langsung berdasarkan status
+        if status in status_component_map:
+            return status_component_map[status]
+        
+        # Jika tidak ada mapping langsung, gunakan metrics
+        performance = metrics.get('performance', 100)
+        quality = metrics.get('quality', 100)
+        
+        if quality < 70:
+            return 'Printing'
+        elif performance < 60:
+            return 'Feeder'
+        elif performance < 80:
+            return 'Pre-Feeder'
+        else:
+            # Random selection untuk variasi
+            import random
+            return random.choice(['Slotter', 'Stacker', 'Conveyor'])
+    
+    def _generate_status_based_reason(self, status: str, component: str, metrics: Dict[str, Any]) -> str:
+        """
+        Generate alasan downtime berdasarkan machine status.
+        
+        Args:
+            status: Machine status
+            component: Komponen terdampak
+            metrics: Performance dan quality metrics
+            
+        Returns:
+            String alasan downtime
+        """
+        performance = metrics.get('performance', 0)
+        quality = metrics.get('quality', 0)
+        
+        status_reasons = {
+            'Error': f'{component} error detected - requires immediate attention',
+            'Stopped': f'{component} stopped unexpectedly - investigating cause',
+            'Maintenance': f'Scheduled maintenance on {component}',
+            'Idle': f'{component} idle - waiting for material or operator',
+            'Setup': f'{component} setup in progress',
+            'Changeover': f'{component} changeover procedure'
+        }
+        
+        base_reason = status_reasons.get(status, f'{component} downtime - status: {status}')
+        
+        # Tambahkan context performance/quality jika relevan
+        if performance < 50 or quality < 50:
+            base_reason += f' (Performance: {performance:.1f}%, Quality: {quality:.1f}%)'
+        
+        return base_reason
     
     def _analyze_health_drops(
         self,

@@ -27,14 +27,14 @@ class HealthService:
     
     def _get_prediction_service(self):
         """
-        Lazy loading untuk PredictionService untuk menghindari circular import.
+        Lazy loading untuk Enhanced PredictionService untuk menghindari circular import.
         
         Returns:
-            Instance dari PredictionService
+            Instance dari Enhanced PredictionService
         """
         if self._prediction_service is None:
-            from src.services.prediction_service import PredictionService
-            self._prediction_service = PredictionService()
+            from src.services.enhanced_prediction_service import EnhancedPredictionService
+            self._prediction_service = EnhancedPredictionService()
         return self._prediction_service
     
     def calculate_rpn_score(self, rpn_value: float, rpn_max: float) -> float:
@@ -59,14 +59,14 @@ class HealthService:
         Menghitung OEE Score berbasis data sensor terbaru di database.
         Formula: OEE = Availability × Performance × Quality (dalam desimal)
         
-        Availability dihitung dari histori machine_status (Running vs Downtime).
+        Availability dihitung berdasarkan WAKTU (time-based), bukan jumlah log.
         Performance dan Quality diambil dari data terbaru.
         
         Returns:
             Dict dengan keys: oee_score, availability_rate, performance_rate, quality_rate
         """
-        # Ambil histori untuk menghitung availability
-        recent_logs = db_service.get_recent_machine_logs(limit=100)
+        # Ambil histori untuk menghitung availability (1 jam terakhir atau lebih)
+        recent_logs = db_service.get_recent_machine_logs(limit=200)
         
         if not recent_logs:
             logger.warning("No machine logs available, using fallback values")
@@ -77,10 +77,46 @@ class HealthService:
                 "quality_rate": 0.0
             }
         
-        # Hitung Availability dari histori status
-        running_count = sum(1 for log in recent_logs if log.get("machine_status") == "Running")
-        total_count = len(recent_logs)
-        availability_rate = (running_count / total_count) * 100.0
+        # ===================================================================
+        # HITUNG AVAILABILITY BERBASIS WAKTU (TIME-BASED)
+        # ===================================================================
+        from datetime import datetime, timedelta
+        
+        total_uptime_seconds = 0.0
+        total_time_seconds = 0.0
+        
+        # Iterasi melalui log untuk menghitung durasi tiap status
+        for i in range(len(recent_logs) - 1):
+            current_log = recent_logs[i]
+            next_log = recent_logs[i + 1]
+            
+            # Hitung durasi antara log ini dan log berikutnya
+            current_time = current_log.get("timestamp")
+            next_time = next_log.get("timestamp")
+            
+            if current_time and next_time:
+                # Konversi ke datetime jika masih string
+                if isinstance(current_time, str):
+                    current_time = datetime.fromisoformat(current_time.replace('Z', '+00:00'))
+                if isinstance(next_time, str):
+                    next_time = datetime.fromisoformat(next_time.replace('Z', '+00:00'))
+                
+                # Hitung durasi (dalam detik)
+                duration_seconds = abs((current_time - next_time).total_seconds())
+                total_time_seconds += duration_seconds
+                
+                # Jika status Running, tambahkan ke uptime
+                if current_log.get("machine_status") == "Running":
+                    total_uptime_seconds += duration_seconds
+        
+        # Hitung availability berdasarkan waktu
+        if total_time_seconds > 0:
+            availability_rate = (total_uptime_seconds / total_time_seconds) * 100.0
+        else:
+            # Fallback: gunakan status log terbaru
+            latest_status = recent_logs[0].get("machine_status", "Unknown")
+            availability_rate = 100.0 if latest_status == "Running" else 0.0
+            logger.warning(f"Cannot calculate time-based availability, using current status: {latest_status}")
         
         # Ambil Performance dan Quality dari log terbaru
         latest_log = recent_logs[0]  # Sudah diurutkan DESC
@@ -94,7 +130,8 @@ class HealthService:
         oee_score = max(min(oee_score, float(OEE_MAX)), float(OEE_MIN))
         
         logger.info(
-            f"OEE calculated: availability={availability_rate:.2f}% ({running_count}/{total_count} Running), "
+            f"OEE calculated (time-based): availability={availability_rate:.2f}% "
+            f"(uptime={total_uptime_seconds/60:.1f}min / total={total_time_seconds/60:.1f}min), "
             f"performance={performance_rate:.2f}%, quality={quality_rate:.2f}%, oee={oee_score:.2f}%"
         )
         
@@ -401,10 +438,17 @@ class HealthService:
                     logger.info(f"[AUTO-DETECT] Shift detected from time: Shift {current_shift} (Hour: {current_hour})")
                 
                 # Siapkan data untuk model "Murni Fishbone + Shift"
-                # Model membutuhkan 'reason' + 'shift'
+                # Model membutuhkan 'reason' + 'shift' + health_index + sensor data
                 real_time_data = {
                     "reason": current_error_reason if current_error_reason else "_NONE_",
-                    "shift": current_shift if current_shift else "_NONE_"
+                    "shift": current_shift if current_shift else "_NONE_",
+                    "health_index": final_health_index,  # Tambahkan health index
+                    # Tambahkan sensor data dari latest_status jika tersedia
+                    "suction_strength": latest_status.get('suction_strength') if latest_status else None,
+                    "blade_sharpness": latest_status.get('blade_sharpness') if latest_status else None,
+                    "temp_consistency": latest_status.get('temp_consistency') if latest_status else None,
+                    "run_time": latest_status.get('run_time') if latest_status else None,
+                    "production": latest_status.get('production') if latest_status else None
                 }
                 
                 logger.info(

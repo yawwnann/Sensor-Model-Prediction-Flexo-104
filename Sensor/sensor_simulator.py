@@ -316,31 +316,71 @@ def simulate_sensor_data():
     # SIMULASI STATUS MESIN & PRODUKSI
     # ========================================================================
     
-    # Tentukan status mesin berdasarkan probabilitas downtime
+    # Tentukan status mesin berdasarkan probabilitas dan jenis downtime
     if random.random() < downtime_probability:
-        machine_status = "Downtime"
+        # Berbagai jenis machine status untuk testing downtime service
+        downtime_statuses = [
+            ("Error", 0.4),      # 40% Error
+            ("Maintenance", 0.3), # 30% Maintenance
+            ("Stopped", 0.2),    # 20% Stopped  
+            ("Idle", 0.1)        # 10% Idle
+        ]
+        
+        # Pilih status berdasarkan probabilitas
+        rand = random.random()
+        cumulative = 0
+        machine_status = "Downtime"  # Default fallback
+        
+        for status, prob in downtime_statuses:
+            cumulative += prob
+            if rand <= cumulative:
+                machine_status = status
+                break
+        
         performance_rate = 0.0
         quality_rate = 0.0
+        availability_rate = 0.0  # ✅ AVAILABILITY = 0% saat downtime
         interval_production = 0
         interval_defects = 0
         
+        # Untuk status downtime, tidak ada update kumulatif produksi
+        # (cumulative_production dan cumulative_defects tetap sama)
+        
         # ====================================================================
-        # TAMBAHKAN ERROR MESSAGE SAAT DOWNTIME
+        # TAMBAHKAN ERROR MESSAGE BERDASARKAN STATUS
         # ====================================================================
-        # Daftar error yang mungkin terjadi (sesuai dengan training data)
-        possible_errors = [
-            "SLOTTER_MISALIGNMENT",
-            "FEEDER_JAM_ELEC",
-            "FEEDER_JAM_MECH",
-            "PRINT_GHOSTING",
-            "PRINT_BLOBBING",
-            "INK_BLOBBING",
-            "CREASING_CRACK",
-            "CREASING_MISALIGNMENT",
-            "DIECUT_PECAH",
-            "DIECUT_TUMPUL"
-        ]
-        error_message = random.choice(possible_errors)
+        status_error_mapping = {
+            "Error": [
+                "ELECTRICAL_FAILURE",
+                "SENSOR_MALFUNCTION", 
+                "SYSTEM_ERROR",
+                "COMMUNICATION_FAULT",
+                "SERVO_DRIVER_ERROR"
+            ],
+            "Maintenance": [
+                "SCHEDULED_MAINTENANCE",
+                "PREVENTIVE_CLEANING",
+                "LUBRICATION_SERVICE",
+                "BLADE_REPLACEMENT",
+                "CALIBRATION_REQUIRED"
+            ],
+            "Stopped": [
+                "EMERGENCY_STOP",
+                "OPERATOR_STOP",
+                "SAFETY_INTERLOCK",
+                "MATERIAL_SHORTAGE",
+                "QUALITY_ISSUE_STOP"
+            ],
+            "Idle": [
+                "WAITING_MATERIAL",
+                "OPERATOR_BREAK",
+                "SHIFT_CHANGE",
+                "WAITING_INSTRUCTIONS",
+                "NO_ORDERS"
+            ]
+        }
+        
+        error_message = random.choice(status_error_mapping.get(machine_status, ["GENERAL_DOWNTIME"]))
         failure_reason = error_message  # Backup field
     else:
         machine_status = "Running"
@@ -354,6 +394,13 @@ def simulate_sensor_data():
         # Simulasikan quality dengan variance
         variance_qual = random.uniform(-QUALITY_VARIANCE, QUALITY_VARIANCE)
         quality_rate = max(0, min(100, avg_quality_rate + variance_qual))
+        
+        # ====================================================================
+        # HITUNG AVAILABILITY RATE saat Running
+        # ====================================================================
+        # Simulasikan availability dengan variance
+        variance_avail = random.uniform(-PERFORMANCE_VARIANCE, PERFORMANCE_VARIANCE)
+        availability_rate = max(0, min(100, avg_availability_rate + variance_avail))
         
         # ====================================================================
         # HITUNG PRODUKSI INTERVAL (5 detik)
@@ -382,7 +429,7 @@ def simulate_sensor_data():
         interval_defects = min(interval_defects, interval_production)
         
         # ====================================================================
-        # UPDATE KUMULATIF
+        # UPDATE KUMULATIF (hanya saat Running)
         # ====================================================================
         cumulative_production += interval_production
         cumulative_defects += interval_defects
@@ -395,6 +442,7 @@ def simulate_sensor_data():
         "machine_status": machine_status,
         "performance_rate": round(performance_rate, 2),
         "quality_rate": round(quality_rate, 2),
+        "availability_rate": round(availability_rate, 2),  # ✅ TAMBAHKAN AVAILABILITY
         "cumulative_production": cumulative_production,  # ✅ Data kumulatif
         "cumulative_defects": cumulative_defects,        # ✅ Data kumulatif
         "interval_production": interval_production,      # Produksi interval ini
