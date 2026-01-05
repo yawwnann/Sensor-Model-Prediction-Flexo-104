@@ -1,0 +1,41 @@
+name: Auto Commit Daily
+
+on:
+  schedule:
+    # Jalan tiap hari jam 01:00 UTC (ubah kalau mau)
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+jobs:
+  auto-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Git
+        run: |
+          git config --global user.name "yawwnann"
+          git config --global user.email "c0478592@gmail.com"
+
+      - name: Auto commit random times
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COMMITS=$((RANDOM % 16 + 5)) # 5–20 commit
+          echo "Akan membuat $COMMITS commit hari ini"
+
+          for i in $(seq 1 $COMMITS); do
+            echo "Commit ke-$i pada $(date)" >> auto_commit.log
+            git add auto_commit.log
+            git commit -m "auto commit #$i $(date +'%Y-%m-%d %H:%M:%S')"
+          done
+
+      - name: Push changes
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
