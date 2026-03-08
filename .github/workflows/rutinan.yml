@@ -1,45 +1,77 @@
-name: Auto Commit Daily
+name: Auto Dev Activity
 
 on:
   schedule:
-    # Jalan tiap hari jam 01:00 UTC (ubah kalau mau)
     - cron: "0 1 * * *"
   workflow_dispatch:
 
-
 permissions:
   contents: write
-  
+  pull-requests: write
+
 jobs:
-  auto-commit:
+  auto-activity:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          persist-credentials: false
 
-      - name: Set up Git
+      - name: Setup Git
         run: |
           git config --global user.name "yawwnann"
           git config --global user.email "c0478592@gmail.com"
 
-      - name: Auto commit random times
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install GitHub CLI
         run: |
-          COMMITS=$((RANDOM % 16 + 5)) # 5–20 commit
-          echo "Akan membuat $COMMITS commit hari ini"
+          sudo apt update
+          sudo apt install gh -y
+
+      - name: Auth GitHub CLI
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      - name: Random commits
+        run: |
+          COMMITS=$((RANDOM % 10 + 5))
+          echo "Membuat $COMMITS commit"
 
           for i in $(seq 1 $COMMITS); do
-            echo "Commit ke-$i pada $(date)" >> auto_commit.log
-            git add auto_commit.log
-            git commit -m "auto commit #$i $(date +'%Y-%m-%d %H:%M:%S')"
+            echo "Commit ke-$i $(date)" >> activity.log
+            git add activity.log
+            git commit -m "update activity $i"
           done
 
-      - name: Push changes
-        uses: ad-m/github-push-action@v0.8.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: main
+      - name: Create branch
+        run: |
+          BRANCH="feature/auto-$(date +%s)"
+          echo "BRANCH_NAME=$BRANCH" >> $GITHUB_ENV
+          git checkout -b $BRANCH
+
+      - name: Add feature change
+        run: |
+          echo "Auto feature $(date)" >> feature.txt
+          git add feature.txt
+          git commit -m "add auto feature"
+
+      - name: Push branch
+        run: |
+          git push origin $BRANCH_NAME
+
+      - name: Create Pull Request
+        run: |
+          gh pr create \
+            --title "Auto PR $(date)" \
+            --body "Automated PR from workflow" \
+            --base main \
+            --head $BRANCH_NAME
+
+      - name: Review Pull Request
+        run: |
+          PR=$(gh pr list --head $BRANCH_NAME --json number --jq '.[0].number')
+          gh pr review $PR --approve --body "LGTM"
+
+      - name: Merge Pull Request
+        run: |
+          PR=$(gh pr list --head $BRANCH_NAME --json number --jq '.[0].number')
+          gh pr merge $PR --merge --admin
